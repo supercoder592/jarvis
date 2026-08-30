@@ -84,17 +84,6 @@
       <input class="field" id="pair-pass" type="text" autocomplete="off"
              placeholder="同步密語（在舊裝置的 ⚙︎ 裡看得到）">
       <button class="btn primary wide" id="btn-pair-restore">用密語接手</button>
-      <button class="btn ghost wide" id="btn-pair-scan">或掃描舊裝置的 QR</button>
-      <div class="pair-scan" id="pair-scan" hidden>
-        <div class="reactor small">
-          <video id="pair-cam" playsinline muted autoplay></video>
-          <div class="ring ring-a"></div>
-        </div>
-        <div class="pair-side">
-          <p class="muted small" id="pair-hint">把舊裝置的 QR 對準鏡頭…</p>
-          <button class="btn ghost" id="btn-pair-cancel">取消</button>
-        </div>
-      </div>
     </div>
 
     <ol class="steps">
@@ -241,34 +230,11 @@
       資料在這支手機上先用 AES-256 加密才上傳，GitHub 只看得到密文。
       預設就存回這個 App 自己的 repo，放在獨立分支，不會干擾網站部署。
       <b>如果那個 repo 是公開的</b>，密文等於公開可下載——加密擋得住，
-      但萬一配對 QR 外流，別人存下來的舊檔就能回頭解開。放 private repo 多一層保險。
+      但萬一密語外流，別人存下來的舊檔就能回頭解開。放 private repo 多一層保險。
     </p>
 
-    <div class="row btn-row">
-      <button class="btn ghost" id="btn-sync-qr">顯示配對 QR</button>
-      <button class="btn ghost" id="btn-sync-scan">掃描配對 QR</button>
-    </div>
-    <div class="qr-box" id="qr-box" hidden>
-      <canvas id="qr-canvas"></canvas>
-      <p class="muted small">
-        這張 QR 等於整套鑰匙（Token + 解密密語）。只給你自己的裝置掃，
-        不要拍給別人、也不要留在相簿裡。
-      </p>
-      <button class="btn ghost" id="btn-qr-hide">收起來</button>
-    </div>
-    <div class="pair-scan" id="sync-scan" hidden>
-      <div class="reactor small">
-        <video id="sync-cam" playsinline muted autoplay></video>
-        <div class="ring ring-a"></div>
-      </div>
-      <div class="pair-side">
-        <p class="muted small" id="sync-scan-hint">把另一台裝置的 QR 對準鏡頭…</p>
-        <button class="btn ghost" id="btn-sync-scan-cancel">取消</button>
-      </div>
-    </div>
-
     <details class="adv">
-      <summary>手動設定（用 QR 配對的話不用碰這裡）</summary>
+      <summary>手動設定（平常不用碰）</summary>
     <label class="row"><span>Repo（owner/repo）</span>
       <input class="field" id="set-sync-repo" type="text" autocomplete="off" placeholder="你的帳號/private-repo"></label>
     <label class="row"><span>分支</span>

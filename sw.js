@@ -1,6 +1,6 @@
 // Service Worker：讓 JARVIS 可以離線啟動。
 // 外殼（HTML/CSS/JS）預先快取；6MB 的辨識模型第一次用到才抓，之後永久留在快取。
-const VERSION = 'jarvis-v11';
+const VERSION = 'jarvis-v12';
 const SHELL = `${VERSION}-shell`;
 // 模型快取刻意不帶版本號，改版時才不會又要重抓 6MB
 const MODELS = 'jarvis-models';
@@ -22,8 +22,6 @@ const SHELL_FILES = [
   './js/memory.js',
   './js/sync.js',
   './js/crypto.js',
-  './js/qr.js',
-  './vendor/qr.esm.js',
   './js/ai.js',
   './vendor/face-api.js',
   './vendor/anthropic-sdk.esm.js',

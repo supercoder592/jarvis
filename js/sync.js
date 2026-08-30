@@ -116,7 +116,7 @@ export async function readPublic(s) {
   const url = `https://raw.githubusercontent.com/${s.syncRepo}/${encodeURIComponent(s.syncBranch)}/${s.syncPath}?t=${Date.now()}`;
   const res = await fetch(url, { cache: 'no-store' });
   if (res.status === 404) {
-    throw new Error('雲端上還沒有資料，或這個 repo 不是公開的。公開的話請先在舊裝置同步一次；私有的話請改用 QR 配對。');
+    throw new Error('雲端上還沒有資料，或這個 repo 不是公開的。公開的話請先在舊裝置同步一次；私有的話請到 ⚙︎ 的「進階」用連結碼設定。');
   }
   if (!res.ok) throw new Error(`讀不到雲端資料（${res.status}）。`);
   try {
@@ -251,7 +251,7 @@ export async function restoreWithPassphrase(passphrase) {
     syncBranch: s.syncBranch,
     syncPath: s.syncPath,
   };
-  if (!target.syncRepo) throw new Error('看不出這個 App 掛在哪個 repo，請改用 QR 配對。');
+  if (!target.syncRepo) throw new Error('看不出這個 App 掛在哪個 repo，請到 ⚙︎ 的「進階」手動填一次。');
 
   const envelope = await readPublic(target);
   const data = await decryptJson(pass, envelope); // 密語不對會在這裡擋下來
