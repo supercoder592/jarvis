@@ -78,10 +78,13 @@
     <div class="pair-box" id="pair-box">
       <h3>已經有另一台裝置？</h3>
       <p class="muted small">
-        在舊裝置打開 ⚙︎ →「顯示配對 QR」，用這裡掃一下，
-        記憶、金鑰、臉部檔案全部直接接手，下面的步驟都可以跳過。
+        輸入你的同步密語，記憶、金鑰、臉部檔案全部直接接手，下面的步驟都可以跳過。
+        接手完就能直接刷臉進來。
       </p>
-      <button class="btn primary wide" id="btn-pair-scan">掃描配對 QR</button>
+      <input class="field" id="pair-pass" type="text" autocomplete="off"
+             placeholder="同步密語（在舊裝置的 ⚙︎ 裡看得到）">
+      <button class="btn primary wide" id="btn-pair-restore">用密語接手</button>
+      <button class="btn ghost wide" id="btn-pair-scan">或掃描舊裝置的 QR</button>
       <div class="pair-scan" id="pair-scan" hidden>
         <div class="reactor small">
           <video id="pair-cam" playsinline muted autoplay></video>
@@ -276,6 +279,10 @@
       <input class="field" id="set-sync-token" type="password" autocomplete="off" placeholder="github_pat_..."></label>
     <label class="row"><span>同步密語（解密用，GitHub 拿不到）</span>
       <input class="field" id="set-sync-pass" type="text" autocomplete="off" placeholder="按下面的按鈕產生"></label>
+    <p class="muted small">
+      這是新裝置唯一需要的東西。可以改成你記得住的句子，但因為 repo 是公開的，
+      <b>請至少 12 個字、不要用生日或常見密碼</b>；懶得想就用產生的那組，抄在安全的地方。
+    </p>
     <label class="row inline"><span>連臉部檔案也同步</span>
       <input type="checkbox" id="set-sync-face"></label>
 

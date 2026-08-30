@@ -107,6 +107,25 @@ async function ensureBranch(s) {
   if (!created.ok && created.status !== 422) throw await ghError(created);
 }
 
+/**
+ * 沒有 token 也能讀（前提是 repo 公開）。
+ * 新裝置就是靠這條路：只要一組密語就能把資料撈下來解開，
+ * token 本身藏在加密內容裡，解開後才拿得到。
+ */
+export async function readPublic(s) {
+  const url = `https://raw.githubusercontent.com/${s.syncRepo}/${encodeURIComponent(s.syncBranch)}/${s.syncPath}?t=${Date.now()}`;
+  const res = await fetch(url, { cache: 'no-store' });
+  if (res.status === 404) {
+    throw new Error('雲端上還沒有資料，或這個 repo 不是公開的。公開的話請先在舊裝置同步一次；私有的話請改用 QR 配對。');
+  }
+  if (!res.ok) throw new Error(`讀不到雲端資料（${res.status}）。`);
+  try {
+    return await res.json();
+  } catch {
+    throw new Error('雲端上的檔案讀不出來，可能被改壞了。');
+  }
+}
+
 async function readRemote(s) {
   const url = `${API}/repos/${s.syncRepo}/contents/${encodeURIComponent(s.syncPath)}`;
   const res = await fetch(`${url}?ref=${encodeURIComponent(s.syncBranch)}&t=${Date.now()}`,
@@ -153,6 +172,8 @@ function snapshot() {
   // 備用密碼存的是加鹽雜湊，跟著加密內容一起走，新裝置配對完就不用再設一次
   const p = pinStore.raw();
   if (p) data.pin = p;
+  // token 也放進加密內容：新裝置只憑密語把檔案讀下來解開後，就自帶寫入權限
+  if (s.syncToken) data.token = s.syncToken;
   return data;
 }
 
@@ -190,6 +211,8 @@ export function merge(local, remote) {
   if (face) merged.face = face;
   const pinRec = local.pin || remote.pin;
   if (pinRec) merged.pin = pinRec;
+  const token = local.token || remote.token;
+  if (token) merged.token = token;
 
   const changed = JSON.stringify(merged.settings) !== JSON.stringify(local.settings)
     || (face?.enrolledAt || 0) !== (local.face?.enrolledAt || 0);
@@ -208,6 +231,34 @@ function applyLocally(data) {
     }
   }
   if (data.pin && !pinStore.exists()) pinStore.restore(data.pin);
+  if (data.token && !settings.get('syncToken')) {
+    settings.patch({ syncToken: data.token }, { touch: false });
+  }
+}
+
+/**
+ * 新裝置接手：只要一組密語。
+ * repo 從網址推導、檔案公開可讀、token 藏在加密內容裡，
+ * 所以使用者只需要提供那個「只有他知道」的秘密。
+ */
+export async function restoreWithPassphrase(passphrase) {
+  const pass = (passphrase || '').trim();
+  if (!pass) throw new Error('請輸入同步密語。');
+
+  const s = settings.all();
+  const target = {
+    syncRepo: s.syncRepo || guessRepo(),
+    syncBranch: s.syncBranch,
+    syncPath: s.syncPath,
+  };
+  if (!target.syncRepo) throw new Error('看不出這個 App 掛在哪個 repo，請改用 QR 配對。');
+
+  const envelope = await readPublic(target);
+  const data = await decryptJson(pass, envelope); // 密語不對會在這裡擋下來
+  settings.patch({ ...target, syncPass: pass, syncEnabled: true });
+  applyLocally(data);
+  settings.patch({ syncLastAt: Date.now() }, { touch: false });
+  return data;
 }
 
 /**

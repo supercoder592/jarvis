@@ -8,7 +8,7 @@ import * as memory from './memory.js';
 import * as sync from './sync.js';
 import { randomPassphrase } from './crypto.js';
 
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '2.0.0';
 const AUTO_LOCK_MS = 5 * 60 * 1000; // 離開 App 超過 5 分鐘就重新上鎖
 
 const $ = (id) => document.getElementById(id);
@@ -26,6 +26,7 @@ const el = {};
   'set-sync-enabled', 'set-sync-repo', 'set-sync-branch', 'set-sync-path', 'set-sync-token', 'set-sync-pass',
   'set-sync-face', 'btn-sync-gen', 'btn-sync-now', 'btn-sync-copy', 'btn-sync-paste', 'sync-status',
   'pair-box', 'btn-pair-scan', 'pair-scan', 'pair-cam', 'pair-hint', 'btn-pair-cancel',
+  'pair-pass', 'btn-pair-restore',
   'btn-sync-qr', 'btn-sync-scan', 'qr-box', 'qr-canvas', 'btn-qr-hide',
   'sync-scan', 'sync-cam', 'sync-scan-hint', 'btn-sync-scan-cancel',
   'set-rate', 'rate-val', 'set-threshold', 'thr-val', 'set-liveness',
@@ -545,8 +546,34 @@ async function syncNow(manual = false) {
   }
 }
 
-// ── QR 配對：新裝置掃一次，整套設定就過去了 ──
+// ── 新裝置接手 ──
 let stopScan = null;
+
+/** 接手成功後的共用收尾：資料都在了就直接進主畫面 */
+function afterHandover() {
+  if (faceStore.exists() || pinStore.exists()) {
+    toast('接手完成，這台裝置已經認得你了');
+    unlock();
+  } else {
+    hint(el['setup-hint'], '資料接手完成，但舊裝置沒有臉部檔案，請在下面建檔。');
+  }
+}
+
+/** 只用一組密語把資料接過來（repo 從網址推導、token 藏在加密內容裡） */
+async function restoreByPassphrase() {
+  const pass = el['pair-pass'].value.trim();
+  if (!pass) { hint(el['setup-hint'], '請先輸入同步密語。', true); return; }
+  el['btn-pair-restore'].disabled = true;
+  hint(el['setup-hint'], '正在把資料接過來…');
+  try {
+    await sync.restoreWithPassphrase(pass);
+    afterHandover();
+  } catch (err) {
+    hint(el['setup-hint'], err.message, true);
+  } finally {
+    el['btn-pair-restore'].disabled = false;
+  }
+}
 
 async function showPairQr() {
   saveFromSheet();
@@ -901,6 +928,11 @@ function wire() {
     toast('新密語已產生，記得用「複製連結碼」帶到其他裝置');
   });
   el['btn-sync-now'].addEventListener('click', () => { saveFromSheet(); syncNow(true); });
+  el['set-sync-pass'].addEventListener('change', () => {
+    // 檔案是公開可讀的，密語就是唯一那道鎖，太短會被離線暴力破解
+    const v = el['set-sync-pass'].value.trim();
+    if (v && v.replace(/-/g, '').length < 12) toast('這組密語偏短，建議 12 個字以上或改用產生的那組');
+  });
   el['btn-sync-qr'].addEventListener('click', showPairQr);
   el['btn-qr-hide'].addEventListener('click', () => { el['qr-box'].hidden = true; });
   el['btn-sync-scan'].addEventListener('click', () => startPairScan({
@@ -909,18 +941,11 @@ function wire() {
   }));
   el['btn-sync-scan-cancel'].addEventListener('click', stopPairScan);
 
+  el['btn-pair-restore'].addEventListener('click', restoreByPassphrase);
+  el['pair-pass'].addEventListener('keydown', (e) => { if (e.key === 'Enter') restoreByPassphrase(); });
   el['btn-pair-scan'].addEventListener('click', () => startPairScan({
     panel: el['pair-scan'], video: el['pair-cam'], hint: el['pair-hint'],
-    onDone: () => {
-      stopPairScan();
-      // 臉部檔案與備用密碼都跟著過來了，直接進主畫面，不用再走設定精靈
-      if (faceStore.exists() || pinStore.exists()) {
-        toast('配對完成，這台裝置已經認得你了');
-        unlock();
-      } else {
-        hint(el['setup-hint'], '資料接手完成，但舊裝置沒有臉部檔案，請在下面建檔。');
-      }
-    },
+    onDone: () => { stopPairScan(); afterHandover(); },
   }));
   el['btn-pair-cancel'].addEventListener('click', stopPairScan);
   el['btn-sync-copy'].addEventListener('click', copyLinkCode);
