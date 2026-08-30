@@ -44,7 +44,7 @@ function buildBody(settings, history, withThinking) {
 
 export async function ask({ client, settings, history, onDelta, signal }) {
   const model = settings.geminiModel || FALLBACK_MODELS[0].id;
-  let res = await send(client, model, buildBody(settings, history, thinkingSupported), signal);
+  let res = await sendWithRetry(client, model, buildBody(settings, history, thinkingSupported), signal);
 
   // 模型不支援 thinkingLevel 就退一步重送，之後都不再帶
   if (!res.ok && res.status === 400 && thinkingSupported) {
@@ -60,6 +60,20 @@ export async function ask({ client, settings, history, onDelta, signal }) {
 
 const IDLE_TIMEOUT_MS = 45000;
 
+/** fetch 本身失敗（連不出去），值得自動重試一次 */
+class NetworkError extends Error {}
+
+/** 行動網路偶爾會有一次性的連線失敗，重試一次再放棄 */
+async function sendWithRetry(client, model, body, signal) {
+  try {
+    return await send(client, model, body, signal);
+  } catch (err) {
+    if (!(err instanceof NetworkError) || signal?.aborted) throw err;
+    await new Promise((r) => setTimeout(r, 800));
+    return send(client, model, body, signal);
+  }
+}
+
 async function send(client, model, body, signal) {
   try {
     return await fetch(`${BASE}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
@@ -70,7 +84,7 @@ async function send(client, model, body, signal) {
     });
   } catch (err) {
     if (err?.name === 'AbortError') throw err;
-    throw new Error(`連不上 Gemini（${err?.message || err}）。檢查網路，或稍後再試。`);
+    throw new NetworkError(`連不上 Gemini（${err?.message || err}）。檢查網路，或稍後再試。`);
   }
 }
 

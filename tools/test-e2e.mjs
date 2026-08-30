@@ -131,7 +131,7 @@ try {
     geminiBody = JSON.parse(route.request().postData() || '{}');
     return route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' },
       // 用 \r\n\r\n：Google 實際送的就是這個，只認 \n\n 會解析不出來
-      body: 'data: {"candidates":[{"content":{"parts":[{"thought":true,"text":"(思考)"},{"text":"我在。"}],"role":"model"},"finishReason":"STOP"}]}\r\n\r\n' });
+      body: 'data: {"candidates":[{"content":{"parts":[{"thought":true,"text":"(思考)"},{"text":"我在。<remember>生日是 3 月 14 日</remember>"}],"role":"model"},"finishReason":"STOP"}]}\r\n\r\n' });
   });
   await page.click('#btn-settings');
   await page.waitForSelector('#sheet:not([hidden])');
@@ -151,7 +151,11 @@ try {
   await page.click('#btn-send');
   await page.waitForFunction(() => document.querySelectorAll('#chat .msg.ai').length > 1, { timeout: 10000 });
   const geminiReply = await page.$$eval('#chat .msg.ai', (n) => n[n.length - 1].textContent);
-  check('Gemini 回覆進畫面且略過 thought', geminiReply === '我在。', geminiReply);
+  check('Gemini 回覆進畫面且略過 thought 與記憶標籤', geminiReply === '我在。', geminiReply);
+  const memText = await page.evaluate(() => JSON.parse(localStorage.getItem('jarvis.settings')).memory);
+  check('助理自己寫進長期記憶', memText.includes('生日是 3 月 14 日'), memText);
+  check('畫面上有提示記住了什麼',
+    await page.$$eval('#chat .msg.sys', (n) => n.some((e) => e.textContent.includes('已記住'))));
   check('送出的 body 結構正確',
     !!geminiBody?.systemInstruction?.parts?.[0]?.text && geminiBody.contents.at(-1).role === 'user');
   await page.click('#btn-settings');

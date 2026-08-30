@@ -11,6 +11,7 @@ const DEFAULTS = {
   assistantName: 'JARVIS',
   persona: '講話精簡自然，先講結論再補理由；語氣像沉穩可靠的私人管家，偶爾帶點幽默。',
   memory: '',
+  autoMemory: true,
   provider: 'claude',      // claude | gemini
   apiKey: '',              // Anthropic
   geminiKey: '',           // Google AI Studio

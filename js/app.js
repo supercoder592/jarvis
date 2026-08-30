@@ -4,8 +4,9 @@ import * as fr from './face.js';
 import * as voice from './voice.js';
 import * as hud from './hud.js';
 import * as ai from './ai.js';
+import * as memory from './memory.js';
 
-const APP_VERSION = '1.5.1';
+const APP_VERSION = '1.6.0';
 const AUTO_LOCK_MS = 5 * 60 * 1000; // 離開 App 超過 5 分鐘就重新上鎖
 
 const $ = (id) => document.getElementById(id);
@@ -19,7 +20,7 @@ const el = {};
   'btn-handsfree', 'live-dot', 'greeting', 'vbars',
   'sheet', 'btn-sheet-close', 'set-name', 'set-assistant', 'set-persona', 'set-memory',
   'set-provider', 'set-key', 'set-workspace', 'set-gemini-key', 'set-proxy', 'set-model', 'set-effort',
-  'rows-claude', 'rows-gemini', 'row-load-models', 'btn-load-models', 'set-tts', 'set-handsfree', 'set-voice',
+  'rows-claude', 'rows-gemini', 'row-load-models', 'btn-load-models', 'set-auto-memory', 'set-tts', 'set-handsfree', 'set-voice',
   'set-rate', 'rate-val', 'set-threshold', 'thr-val', 'set-liveness',
   'btn-reenroll', 'btn-repin', 'btn-clear-chat', 'btn-wipe', 'sheet-version', 'toast',
   'btn-face-test', 'btn-face-test-stop', 'face-test', 'face-test-tip', 'test-cam',
@@ -123,19 +124,22 @@ async function send(text) {
       history: app.history,
       signal: app.abort.signal,
       onDelta: (_d, full) => {
-        node.textContent = full;
+        node.textContent = memory.sanitizeStreaming(full);
         el.chat.scrollTop = el.chat.scrollHeight;
       },
     });
     node.classList.remove('streaming');
 
-    if (!reply.trim()) {
+    const spoken = applyMemory(reply);
+    node.textContent = spoken;
+
+    if (!spoken.trim()) {
       node.remove();
       bubble('sys', '（沒有收到回覆）');
     } else {
-      app.history.push({ role: 'assistant', text: reply });
+      app.history.push({ role: 'assistant', text: spoken });
       chatStore.save(app.history);
-      afterReply(reply);
+      afterReply(spoken);
     }
   } catch (err) {
     node.remove();
@@ -145,6 +149,28 @@ async function send(text) {
     setBusy(false);
     app.abort = null;
   }
+}
+
+/**
+ * 把助理寫在回覆裡的 <remember> / <forget> 收進長期記憶，
+ * 回傳要顯示與朗讀的乾淨文字。
+ */
+function applyMemory(reply) {
+  if (settings.get('autoMemory') === false) return memory.strip(reply);
+
+  const { adds, removes, clean } = memory.extract(reply);
+  if (!adds.length && !removes.length) return clean;
+
+  const result = memory.merge(settings.get('memory'), { adds, removes });
+  if (result.added.length || result.removed.length) {
+    settings.patch({ memory: result.memory });
+    const notes = [
+      ...result.added.map((t) => `已記住：${t}`),
+      ...result.removed.map((t) => `已忘記：${t}`),
+    ];
+    notes.forEach((n) => bubble('sys', n));
+  }
+  return clean;
 }
 
 /** 回覆完成後：朗讀，若開了免持就接著再聽 */
@@ -593,6 +619,7 @@ function openSheet() {
   el['set-assistant'].value = s.assistantName;
   el['set-persona'].value = s.persona;
   el['set-memory'].value = s.memory;
+  el['set-auto-memory'].checked = s.autoMemory !== false;
   el['set-provider'].value = ai.providerOf(s);
   el['set-key'].value = s.apiKey;
   el['set-workspace'].value = s.workspaceId;
@@ -622,6 +649,7 @@ function saveFromSheet() {
     assistantName: el['set-assistant'].value.trim() || 'JARVIS',
     persona: el['set-persona'].value,
     memory: el['set-memory'].value,
+    autoMemory: el['set-auto-memory'].checked,
     provider: el['set-provider'].value,
     apiKey: el['set-key'].value.trim(),
     workspaceId: el['set-workspace'].value.trim(),
