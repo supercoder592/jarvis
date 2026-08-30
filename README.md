@@ -185,18 +185,14 @@ GitHub（和任何拿得到那個檔案的人）只會看到一團密文。
 
 ### 第一台的設定步驟
 
-1. 決定放哪個 repo：留空就用 App 自己的 repo，或另開一個 private repo 更保險
+1. 存放位置不用設定——App 自己知道（就是這個網站所在的 repo，寫在獨立分支）
 2. 產生一把 **fine-grained personal access token**：
    GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens
    - Repository access：**只選那一個 repo**
    - Permissions → Repository permissions → **Contents: Read and write**（其他都不要給）
    - Expiration：建議設一個到期日，到期再換一把
-3. JARVIS → ⚙︎ →「跨裝置同步」：
-   - 勾選「啟用同步」
-   - Repo 已自動填好（要換再改），分支預設 `jarvis-data`、檔名 `data.json`
-   - 貼上 Token
-   - 密語留空（新裝置就能掃臉接手）；想要真正加密才去「進階」設一組
-   - 按「立即同步」，成功的話下面會顯示同步時間
+3. JARVIS → ⚙︎ →「跨裝置同步」：勾「啟用同步」、貼上 Token、按「立即同步」。
+   就這兩個動作，其他欄位都在「進階」裡而且不用碰
 4. 到第二台裝置：按「掃臉接手」就好（見上面）
 
 之後解鎖時、切回 App 時、以及記憶有更新時，都會自動在背景同步。

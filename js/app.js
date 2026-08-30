@@ -8,7 +8,7 @@ import * as memory from './memory.js';
 import * as sync from './sync.js';
 import { randomPassphrase } from './crypto.js';
 
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.3.0';
 const AUTO_LOCK_MS = 5 * 60 * 1000; // 離開 App 超過 5 分鐘就重新上鎖
 
 const $ = (id) => document.getElementById(id);
@@ -763,8 +763,10 @@ function openSheet() {
   el['thr-val'].textContent = (+s.threshold).toFixed(2);
   el['set-liveness'].checked = s.liveness;
   el['set-sync-enabled'].checked = s.syncEnabled;
-  // 沒填過就用網址推出來的 repo（App 掛在哪就存回哪）
-  el['set-sync-repo'].value = s.syncRepo || sync.guessRepo();
+  // 留空就好：實際用的是從網址推出來的 repo（App 掛在哪就存回哪），
+  // 這裡只把它當提示字顯示。存成空值比較耐用——網址換了也還是對的。
+  el['set-sync-repo'].value = s.syncRepo;
+  el['set-sync-repo'].placeholder = sync.guessRepo() || '你的帳號/repo';
   el['set-sync-branch'].value = s.syncBranch;
   el['set-sync-path'].value = s.syncPath;
   el['set-sync-token'].value = s.syncToken;

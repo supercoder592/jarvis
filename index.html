@@ -234,23 +234,26 @@
     <h3 class="sheet-sub">跨裝置同步</h3>
     <label class="row inline"><span>啟用同步</span>
       <input type="checkbox" id="set-sync-enabled"></label>
+    <label class="row"><span>GitHub Token（唯一要填的東西）</span>
+      <input class="field" id="set-sync-token" type="password" autocomplete="off" placeholder="github_pat_..."></label>
     <p class="muted small">
-      資料在這支手機上先用 AES-256 加密才上傳，GitHub 只看得到密文。
-      預設就存回這個 App 自己的 repo，放在獨立分支，不會干擾網站部署。
+      存放位置 App 自己知道（就是這個網站所在的 repo，放在獨立分支，不干擾網站）。
+      只有寫入需要授權，所以要一把 token：GitHub → Settings → Developer settings →
+      Fine-grained tokens，只選這個 repo，權限給 <b>Contents: Read and write</b>。<br>
       同步檔裡有記憶、個性、臉部檔案與備用密碼的雜湊，<b>但沒有 API 金鑰</b>——
       那個放進公開檔案會被爬蟲撿走，所以每台裝置各自填。
     </p>
+    <label class="row inline"><span>連臉部檔案也同步</span>
+      <input type="checkbox" id="set-sync-face"></label>
 
     <details class="adv">
       <summary>手動設定（平常不用碰）</summary>
-    <label class="row"><span>Repo（owner/repo）</span>
-      <input class="field" id="set-sync-repo" type="text" autocomplete="off" placeholder="你的帳號/private-repo"></label>
+    <label class="row"><span>Repo（留空＝自動用這個網站的 repo）</span>
+      <input class="field" id="set-sync-repo" type="text" autocomplete="off" placeholder="自動偵測"></label>
     <label class="row"><span>分支</span>
       <input class="field" id="set-sync-branch" type="text" autocomplete="off" placeholder="jarvis-data"></label>
     <label class="row"><span>檔案路徑</span>
       <input class="field" id="set-sync-path" type="text" autocomplete="off" placeholder="data.json"></label>
-    <label class="row"><span>GitHub Token（fine-grained PAT）</span>
-      <input class="field" id="set-sync-token" type="password" autocomplete="off" placeholder="github_pat_..."></label>
     <label class="row"><span>同步密語（選填）</span>
       <input class="field" id="set-sync-pass" type="text" autocomplete="off" placeholder="留空＝掃臉接手"></label>
     <p class="muted small">
@@ -258,8 +261,6 @@
       填了的話安全性更高（同步檔變成只有你解得開），但每台新裝置都要輸入一次。
       無論填不填，API 金鑰都不會放進同步檔。
     </p>
-    <label class="row inline"><span>連臉部檔案也同步</span>
-      <input type="checkbox" id="set-sync-face"></label>
 
     <div class="row btn-row">
       <button class="btn ghost" id="btn-sync-gen">產生新密語</button>
