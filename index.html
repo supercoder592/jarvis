@@ -19,17 +19,40 @@
 </head>
 <body>
 
+<!-- 背景：透視網格地面 + 星塵，做出景深 -->
+<div class="hud-bg" aria-hidden="true">
+  <div class="grid-floor"></div>
+  <div class="grid-ceil"></div>
+  <div class="stars"></div>
+  <div class="vignette"></div>
+</div>
+
 <!-- ── 開機／人臉辨識 ───────────────────────────────────── -->
 <section id="screen-lock" class="screen">
   <div class="lock-wrap">
-    <div class="reactor" id="reactor">
-      <video id="cam" playsinline muted autoplay></video>
-      <div class="ring ring-a"></div>
-      <div class="ring ring-b"></div>
-      <div class="ring ring-c"></div>
-      <div class="scanline"></div>
+    <div class="scene" id="scene">
+      <div class="hud-frame" aria-hidden="true"></div>
+      <div class="rig" id="rig">
+        <div class="halo" aria-hidden="true"></div>
+        <div class="gyro" aria-hidden="true">
+          <div class="gring g1"></div>
+          <div class="gring g2"></div>
+          <div class="gring g3"></div>
+          <div class="gring g4"></div>
+        </div>
+        <div class="reactor hero" id="reactor">
+          <video id="cam" playsinline muted autoplay></video>
+          <div class="ring ring-a"></div>
+          <div class="ring ring-c"></div>
+          <div class="scanline"></div>
+          <div class="gloss"></div>
+        </div>
+      </div>
     </div>
     <h1 class="brand">J.A.R.V.I.S.</h1>
+    <p class="boot" aria-hidden="true">
+      <span>核心啟動</span><span>生物辨識模組就緒</span><span>等待身分驗證</span>
+    </p>
     <p class="status" id="lock-status">系統待命中</p>
     <div class="lock-actions">
       <button class="btn primary" id="btn-scan">開始人臉辨識</button>
@@ -113,6 +136,10 @@
   </header>
 
   <main class="chat" id="chat"></main>
+
+  <div class="vbars" id="vbars" hidden aria-hidden="true">
+    <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+  </div>
 
   <footer class="composer">
     <button class="mic" id="btn-mic" title="按住說話">🎙</button>

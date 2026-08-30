@@ -20,6 +20,8 @@
   - **免持連續對話**：JARVIS 講完自動再打開麥克風，整段對話不用碰手機
 - **真正的 AI** — 接 Anthropic Claude API，串流回覆，支援長期記憶與個性設定
 - **加入主畫面就像原生 App** — 全螢幕、有圖示、離線可開（模型會快取在手機上）
+- **立體 HUD 介面** — 透視網格背景、環繞核心的 3D 陀螺環、玻璃質感面板；
+  傾斜手機時整組 HUD 會跟著轉（用 DeviceOrientation 做視差，桌機則跟著滑鼠）
 - **一切都在本機** — 臉部特徵、密碼雜湊、對話紀錄、API 金鑰都存在瀏覽器的 localStorage
 
 ---
@@ -161,6 +163,7 @@ js/
   face.js               人臉：載模型、開相機、建檔、驗證、眨眼偵測
   voice.js              語音：辨識輸入、朗讀輸出、挑聲音
   claude.js             Claude：系統提示、串流對話、錯誤翻譯
+  hud.js                介面：傾斜視差（iOS 需在使用者手勢中要權限）
   store.js              localStorage：設定、臉部特徵、密碼雜湊、對話
 vendor/                 face-api.js 與打包好的 Anthropic SDK
 models/                 人臉模型權重（約 6.7MB，第一次用到才下載）

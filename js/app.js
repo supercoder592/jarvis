@@ -2,20 +2,21 @@
 import { settings, face as faceStore, pin as pinStore, chat as chatStore, wipeAll, migrate } from './store.js';
 import * as fr from './face.js';
 import * as voice from './voice.js';
+import * as hud from './hud.js';
 import { makeClient, ask } from './claude.js';
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 const AUTO_LOCK_MS = 5 * 60 * 1000; // 離開 App 超過 5 分鐘就重新上鎖
 
 const $ = (id) => document.getElementById(id);
 const el = {};
 [
-  'screen-lock', 'screen-setup', 'screen-main', 'cam', 'reactor', 'lock-status', 'lock-hint',
+  'screen-lock', 'screen-setup', 'screen-main', 'cam', 'reactor', 'rig', 'lock-status', 'lock-hint',
   'btn-scan', 'btn-use-pin', 'pin-pad', 'pin-input', 'btn-pin-ok',
   'setup-title', 'setup-sub', 'setup-name', 'enroll-cam', 'enroll-dots', 'enroll-tip', 'btn-enroll',
   'setup-pin', 'setup-pin2', 'setup-key', 'btn-setup-done', 'setup-hint', 'step-1', 'step-2', 'step-3', 'step-4',
   'chat', 'input', 'btn-send', 'btn-mic', 'btn-settings', 'btn-lock', 'btn-speak-toggle',
-  'btn-handsfree', 'live-dot', 'greeting',
+  'btn-handsfree', 'live-dot', 'greeting', 'vbars',
   'sheet', 'btn-sheet-close', 'set-name', 'set-assistant', 'set-persona', 'set-memory',
   'set-key', 'set-workspace', 'set-proxy', 'set-model', 'set-effort', 'set-tts', 'set-handsfree', 'set-voice',
   'set-rate', 'rate-val', 'set-threshold', 'thr-val', 'set-liveness',
@@ -171,6 +172,7 @@ function startListening() {
   voice.stopSpeaking();
   app.speaking = false;
   el['btn-mic'].classList.add('rec');
+  el['vbars'].hidden = false;
   el.input.placeholder = '聽你說…';
 
   app.listening = voice.listen({
@@ -186,6 +188,7 @@ function startListening() {
     onEnd: () => {
       app.listening = null;
       el['btn-mic'].classList.remove('rec');
+      el['vbars'].hidden = true;
       el.input.placeholder = '對 JARVIS 說點什麼…';
     },
   });
@@ -219,12 +222,14 @@ function unlock() {
   fr.stopCamera(el.cam);
   fr.stopCamera(el['enroll-cam']);
   el.reactor.classList.remove('scanning', 'matched');
+  el.rig?.classList.remove('scanning', 'matched');
   app.history = chatStore.load();
   renderHistory();
   const s = settings.all();
   el.greeting.textContent = s.ownerName ? `· ${s.ownerName}` : '';
   syncTtsUi();
   syncHandsfreeUi();
+  hud.setActive(false);
   show('screen-main');
   el['pin-pad'].hidden = true;
   el['pin-input'].value = '';
@@ -242,12 +247,15 @@ function lock() {
   hint(el['lock-hint'], '');
   el['lock-status'].textContent = '系統待命中';
   el['pin-pad'].hidden = true;
+  hud.recenter();
+  hud.setActive(true);
   show('screen-lock');
 }
 
 async function runFaceUnlock() {
   if (app.scanning) return;
-  voice.warmUp(); // 借這次點擊解開 iOS 的語音限制
+  voice.warmUp();       // 借這次點擊解開 iOS 的語音限制
+  hud.enableMotion();   // 同一下手勢順便要動作感應權限，做傾斜視差
 
   if (!faceStore.exists()) {
     hint(el['lock-hint'], '這台裝置還沒有臉部檔案，請用密碼進入後到設定裡建檔。', true);
@@ -256,6 +264,7 @@ async function runFaceUnlock() {
   app.scanning = true;
   el['btn-scan'].disabled = true;
   el.reactor.classList.add('scanning');
+  el.rig.classList.add('scanning');
 
   try {
     el['lock-status'].textContent = '啟動相機…';
@@ -273,6 +282,7 @@ async function runFaceUnlock() {
 
     if (result.ok) {
       el.reactor.classList.add('matched');
+      el.rig.classList.add('matched');
       el['lock-status'].textContent = '身分確認，歡迎回來。';
       setTimeout(unlock, 550);
       return;
@@ -293,6 +303,7 @@ async function runFaceUnlock() {
     app.scanning = false;
     el['btn-scan'].disabled = false;
     el.reactor.classList.remove('scanning');
+    el.rig.classList.remove('scanning');
     if (!app.unlocked) fr.stopCamera(el.cam);
   }
 }
@@ -682,6 +693,7 @@ function wire() {
 function boot() {
   if (migrate()) console.info('設定已升級到新的比對方式');
   wire();
+  hud.attach(el.rig);
   if (voice.ttsSupported) window.speechSynthesis.addEventListener?.('voiceschanged', fillVoiceList);
 
   if (!faceStore.exists() && !pinStore.exists()) {
