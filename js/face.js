@@ -89,6 +89,32 @@ export function bestDistance(descriptor, samples) {
   return best;
 }
 
+function centroidOf(samples) {
+  const c = new Float32Array(samples[0].length);
+  for (const s of samples) for (let i = 0; i < c.length; i += 1) c[i] += s[i];
+  for (let i = 0; i < c.length; i += 1) c[i] /= samples.length;
+  return c;
+}
+
+/**
+ * 比對分數。用「到重心的距離」當判斷依據：多組樣本平均掉雜訊後，
+ * 本人的距離會更短，別人的不會，兩者拉得比較開。
+ * （舊版取樣本中的最小距離，等於每次都挑最寬鬆的那組，家人很容易過。）
+ */
+export function scoreOf(descriptor, enrolled) {
+  if (!enrolled.centroid) enrolled.centroid = centroidOf(enrolled.samples);
+  return {
+    score: distance(descriptor, enrolled.centroid),
+    min: bestDistance(descriptor, enrolled.samples),
+  };
+}
+
+/** 建檔樣本自己有多分散，用來提醒建檔品質 */
+export function enrollmentSpread(samples) {
+  const c = centroidOf(samples);
+  return Math.max(...samples.map((s) => distance(s, c)));
+}
+
 /** 建檔：連續取得 count 組互相一致的描述子 */
 export async function enroll(video, { count = 5, onSample, onStatus } = {}) {
   await loadModels();
@@ -124,9 +150,9 @@ export async function enroll(video, { count = 5, onSample, onStatus } = {}) {
  * 回傳 { ok:true } 或 { ok:false, reason }
  */
 export async function verify(video, {
-  threshold = 0.45,
+  threshold = 0.38,
   timeoutMs = 20000,
-  needConsecutive = 2,
+  needConsecutive = 3,
   liveness = false,
   onStatus,
   shouldStop,
@@ -161,20 +187,37 @@ export async function verify(video, {
       }
     }
 
-    const dist = bestDistance(result.descriptor, enrolled.samples);
-    if (dist <= threshold) {
+    const { score } = scoreOf(result.descriptor, enrolled);
+    if (score <= threshold) {
       hits += 1;
       onStatus?.(blinked
-        ? `身分比對中… ${Math.round((1 - dist) * 100)}%`
+        ? `身分比對中… ${hits} / ${needConsecutive}`
         : '請眨一下眼睛');
-      if (hits >= needConsecutive && blinked) return { ok: true, distance: dist };
+      if (hits >= needConsecutive && blinked) return { ok: true, distance: score };
     } else {
       hits = 0;
-      onStatus?.(dist < threshold + 0.12 ? '再靠近一點…' : '無法識別此人臉');
+      onStatus?.(score < threshold + 0.08 ? '再靠近一點、正對鏡頭…' : '無法識別此人臉');
     }
     await wait(90);
   }
   return { ok: false, reason: sawFace ? 'no-match' : 'no-face' };
+}
+
+/**
+ * 辨識測試：持續回報鏡頭前這個人的比對分數，不會解鎖。
+ * 用來實際量測：本人大概多少、家人大概多少，再把門檻設在中間。
+ */
+export async function probe(video, { onTick, shouldStop } = {}) {
+  const enrolled = faceStore.load();
+  if (!enrolled) throw new Error('尚未建立臉部檔案。');
+  await loadModels();
+
+  while (!shouldStop?.()) {
+    const result = await detectOnce(video);
+    if (!result) onTick?.({ found: false });
+    else onTick?.({ found: true, ...scoreOf(result.descriptor, enrolled) });
+    await wait(120);
+  }
 }
 
 function wait(ms) {

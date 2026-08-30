@@ -1,10 +1,10 @@
 // JARVIS 主程式：畫面切換、人臉解鎖、語音對話。
-import { settings, face as faceStore, pin as pinStore, chat as chatStore, wipeAll } from './store.js';
+import { settings, face as faceStore, pin as pinStore, chat as chatStore, wipeAll, migrate } from './store.js';
 import * as fr from './face.js';
 import * as voice from './voice.js';
 import { makeClient, ask } from './claude.js';
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const AUTO_LOCK_MS = 5 * 60 * 1000; // 離開 App 超過 5 分鐘就重新上鎖
 
 const $ = (id) => document.getElementById(id);
@@ -20,6 +20,8 @@ const el = {};
   'set-key', 'set-workspace', 'set-proxy', 'set-model', 'set-effort', 'set-tts', 'set-handsfree', 'set-voice',
   'set-rate', 'rate-val', 'set-threshold', 'thr-val', 'set-liveness',
   'btn-reenroll', 'btn-repin', 'btn-clear-chat', 'btn-wipe', 'sheet-version', 'toast',
+  'btn-face-test', 'btn-face-test-stop', 'face-test', 'face-test-tip', 'test-cam',
+  'probe-score', 'probe-verdict', 'probe-range',
 ].forEach((id) => { el[id] = $(id); });
 
 const app = {
@@ -33,6 +35,8 @@ const app = {
   scanning: false,
   hiddenAt: 0,
   setupMode: 'first', // first | reenroll | repin
+  probing: false,
+  probeSeen: null,
   enrolledThisRun: false,
 };
 
@@ -230,6 +234,7 @@ function unlock() {
 function lock() {
   app.unlocked = false;
   app.scanning = false;
+  stopProbe();
   stopListening();
   voice.stopSpeaking();
   app.abort?.abort();
@@ -366,7 +371,12 @@ async function doEnroll() {
       onStatus: (m) => { el['enroll-tip'].textContent = m; },
     });
     app.enrolledThisRun = true;
-    el['enroll-tip'].textContent = '臉部檔案已建立 ✔';
+    const spread = fr.enrollmentSpread(faceStore.load().samples);
+    if (spread > 0.32) {
+      el['enroll-tip'].textContent = '建好了，但這幾張差異偏大，建議在光線更好的地方重拍一次。';
+    } else {
+      el['enroll-tip'].textContent = '臉部檔案已建立 ✔';
+    }
     toast('臉部建檔完成');
   } catch (err) {
     console.error(err);
@@ -442,6 +452,80 @@ function fillVoiceList() {
   el['set-voice'].value = s.voiceURI || '';
 }
 
+const SHEET_FIELDS = [
+  'set-name', 'set-assistant', 'set-persona', 'set-memory', 'set-key', 'set-workspace',
+  'set-proxy', 'set-model', 'set-effort', 'set-tts', 'set-handsfree', 'set-voice',
+  'set-rate', 'set-threshold', 'set-liveness',
+];
+
+// ── 辨識測試：實際量出鏡頭前這個人的分數 ──────────────────
+function renderProbeRange() {
+  const thr = +settings.get('threshold');
+  const seen = app.probeSeen;
+  el['probe-range'].textContent = seen
+    ? `目前門檻 ${thr.toFixed(2)} · 這次測到的範圍 ${seen.min.toFixed(2)} ～ ${seen.max.toFixed(2)}`
+    : `目前門檻 ${thr.toFixed(2)}：分數小於等於它就會解鎖`;
+}
+
+async function startProbe() {
+  if (app.probing) return;
+  if (!faceStore.exists()) { toast('還沒有臉部檔案，請先建檔。'); return; }
+  app.probing = true;
+  app.probeSeen = null;
+  el['face-test'].hidden = false;
+  el['btn-face-test'].hidden = true;
+  el['probe-score'].textContent = '--';
+  el['probe-verdict'].textContent = '啟動相機…';
+  el['probe-verdict'].className = 'probe-verdict';
+  renderProbeRange();
+
+  try {
+    await fr.startCamera(el['test-cam']);
+    await fr.probe(el['test-cam'], {
+      shouldStop: () => !app.probing,
+      onTick: ({ found, score }) => {
+        if (!found) {
+          el['probe-score'].textContent = '--';
+          el['probe-verdict'].textContent = '沒偵測到人臉';
+          el['probe-verdict'].className = 'probe-verdict';
+          return;
+        }
+        const thr = +settings.get('threshold');
+        const pass = score <= thr;
+        el['probe-score'].textContent = score.toFixed(2);
+        el['probe-verdict'].textContent = pass ? '這個人會被放行 ✔' : '這個人會被擋下 ✘';
+        el['probe-verdict'].className = `probe-verdict ${pass ? 'pass' : 'block'}`;
+        app.probeSeen = app.probeSeen
+          ? { min: Math.min(app.probeSeen.min, score), max: Math.max(app.probeSeen.max, score) }
+          : { min: score, max: score };
+        renderProbeRange();
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    el['probe-verdict'].textContent = cameraError(err);
+    el['probe-verdict'].className = 'probe-verdict block';
+  } finally {
+    fr.stopCamera(el['test-cam']);
+    app.probing = false;
+    el['btn-face-test'].hidden = false;
+  }
+}
+
+function stopProbe() {
+  if (!app.probing) return;
+  app.probing = false;
+  fr.stopCamera(el['test-cam']);
+  el['face-test'].hidden = true;
+  el['btn-face-test'].hidden = false;
+}
+
+function closeSheet() {
+  saveFromSheet();
+  stopProbe();
+  el.sheet.hidden = true;
+}
+
 function openSheet() {
   const s = settings.all();
   el['set-name'].value = s.ownerName;
@@ -462,6 +546,10 @@ function openSheet() {
   el['set-liveness'].checked = s.liveness;
   el['sheet-version'].textContent = `版本 ${APP_VERSION} · 資料僅存於本機`;
   fillVoiceList();
+  el['face-test'].hidden = true;
+  el['btn-face-test'].hidden = false;
+  app.probeSeen = null;
+  renderProbeRange();
   el.sheet.hidden = false;
 }
 
@@ -486,6 +574,7 @@ function saveFromSheet() {
   app.client = null; // 連線設定可能變了，下次重建
   el['rate-val'].textContent = `${(+el['set-rate'].value).toFixed(2)}x`;
   el['thr-val'].textContent = (+el['set-threshold'].value).toFixed(2);
+  renderProbeRange();
   const s = settings.all();
   el.greeting.textContent = s.ownerName ? `· ${s.ownerName}` : '';
   syncTtsUi();
@@ -538,23 +627,25 @@ function wire() {
   el['btn-lock'].addEventListener('click', lock);
 
   el['btn-settings'].addEventListener('click', openSheet);
-  el['btn-sheet-close'].addEventListener('click', () => { saveFromSheet(); el.sheet.hidden = true; });
-  el.sheet.addEventListener('click', (e) => {
-    if (e.target === el.sheet) { saveFromSheet(); el.sheet.hidden = true; }
-  });
-  ['set-rate', 'set-threshold'].forEach((id) => {
-    el[id].addEventListener('input', () => {
-      el['rate-val'].textContent = `${(+el['set-rate'].value).toFixed(2)}x`;
-      el['thr-val'].textContent = (+el['set-threshold'].value).toFixed(2);
-    });
+  el['btn-sheet-close'].addEventListener('click', closeSheet);
+  el.sheet.addEventListener('click', (e) => { if (e.target === el.sheet) closeSheet(); });
+  // 每個欄位一改就立刻寫進 localStorage。先前只在關閉面板時才存，
+  // iOS 若在中途把 App 回收，改過的設定就會退回原值。
+  let saveTimer;
+  const saveSoon = () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveFromSheet, 200); };
+  SHEET_FIELDS.forEach((id) => {
+    el[id].addEventListener('change', saveFromSheet);
+    el[id].addEventListener('input', saveSoon);
   });
   el['set-voice'].addEventListener('change', () => {
-    saveFromSheet();
     voice.speak('好的，這是我的聲音。', { voiceURI: el['set-voice'].value, rate: +el['set-rate'].value });
   });
 
-  el['btn-reenroll'].addEventListener('click', () => { saveFromSheet(); openSetup('reenroll'); });
-  el['btn-repin'].addEventListener('click', () => { saveFromSheet(); openSetup('repin'); });
+  el['btn-face-test'].addEventListener('click', startProbe);
+  el['btn-face-test-stop'].addEventListener('click', stopProbe);
+
+  el['btn-reenroll'].addEventListener('click', () => { closeSheet(); openSetup('reenroll'); });
+  el['btn-repin'].addEventListener('click', () => { closeSheet(); openSetup('repin'); });
   el['btn-clear-chat'].addEventListener('click', () => {
     if (!confirm('確定清除所有對話紀錄？')) return;
     chatStore.clear();
@@ -575,6 +666,7 @@ function wire() {
       stopListening();
       voice.stopSpeaking();
       if (app.scanning) { app.scanning = false; fr.stopCamera(el.cam); }
+      stopProbe();
     } else if (app.unlocked && app.hiddenAt && Date.now() - app.hiddenAt > AUTO_LOCK_MS) {
       lock();
     }
@@ -582,11 +674,13 @@ function wire() {
   window.addEventListener('pagehide', () => {
     fr.stopCamera(el.cam);
     fr.stopCamera(el['enroll-cam']);
+    fr.stopCamera(el['test-cam']);
   });
 }
 
 // ── 啟動 ─────────────────────────────────────────────────
 function boot() {
+  if (migrate()) console.info('設定已升級到新的比對方式');
   wire();
   if (voice.ttsSupported) window.speechSynthesis.addEventListener?.('voiceschanged', fillVoiceList);
 

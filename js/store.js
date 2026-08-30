@@ -20,8 +20,9 @@ const DEFAULTS = {
   handsfree: false,
   voiceURI: '',
   rate: 1.0,
-  threshold: 0.45,
+  threshold: 0.38,
   liveness: false,
+  schema: 2,
 };
 
 function read(key, fallback) {
@@ -57,7 +58,20 @@ export const settings = {
   },
 };
 
-// ── 臉部特徵：存多組 128 維描述子，比對時取最小距離 ──
+/**
+ * 舊版用「與最相近樣本的距離」判斷，v1.2 改成「與重心的距離」，
+ * 兩者刻度不同，舊的門檻值套過來會過鬆，所以一次性重設成新的預設值。
+ */
+export function migrate() {
+  const raw = read(K.settings, null);
+  if (raw && (raw.schema || 0) < 2) {
+    write(K.settings, { ...raw, threshold: DEFAULTS.threshold, schema: 2 });
+    return true;
+  }
+  return false;
+}
+
+// ── 臉部特徵：存多組 128 維描述子，比對時算與重心的距離 ──
 export const face = {
   load() {
     const data = read(K.face, null);

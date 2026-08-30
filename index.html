@@ -175,9 +175,28 @@
 
     <h3 class="sheet-sub">安全</h3>
     <label class="row"><span>辨識嚴格度 <b id="thr-val"></b>（數字越小越嚴格）</span>
-      <input type="range" id="set-threshold" min="0.30" max="0.60" step="0.01"></label>
+      <input type="range" id="set-threshold" min="0.26" max="0.55" step="0.01"></label>
     <label class="row inline"><span>眨眼活體偵測</span>
       <input type="checkbox" id="set-liveness"></label>
+
+    <div class="row">
+      <button class="btn ghost wide" id="btn-face-test">辨識測試 — 量出誰會被放行</button>
+      <p class="muted small" id="face-test-tip">
+        讓自己和家人輪流站到鏡頭前，記下各自的分數，再把上面的嚴格度設在兩個數字中間。
+      </p>
+    </div>
+    <div class="probe" id="face-test" hidden>
+      <div class="reactor small">
+        <video id="test-cam" playsinline muted autoplay></video>
+        <div class="ring ring-a"></div>
+      </div>
+      <div class="probe-side">
+        <div class="probe-score" id="probe-score">--</div>
+        <div class="probe-verdict" id="probe-verdict">啟動中…</div>
+        <div class="muted small" id="probe-range"></div>
+        <button class="btn ghost" id="btn-face-test-stop">停止測試</button>
+      </div>
+    </div>
     <div class="row btn-row">
       <button class="btn ghost" id="btn-reenroll">重新建立臉部檔案</button>
       <button class="btn ghost" id="btn-repin">變更備用密碼</button>
