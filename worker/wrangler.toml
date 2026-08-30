@@ -1,0 +1,9 @@
+name = "jarvis-proxy"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# 建議設成你的 App 網址，例如 "https://你的帳號.github.io"
+# [vars]
+# ALLOWED_ORIGIN = "https://你的帳號.github.io"
+
+# API 金鑰用 secret 存：wrangler secret put ANTHROPIC_API_KEY

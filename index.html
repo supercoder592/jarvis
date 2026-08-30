@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<title>JARVIS</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="description" content="個人專屬的 JARVIS：人臉辨識解鎖、語音對話的離線可安裝 App。">
+<meta name="theme-color" content="#050a12">
+<!-- iOS 加入主畫面：全螢幕、無 Safari 網址列 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="JARVIS">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="icon" href="./icons/icon-192.png">
+<link rel="stylesheet" href="./css/app.css">
+</head>
+<body>
+
+<!-- ── 開機／人臉辨識 ───────────────────────────────────── -->
+<section id="screen-lock" class="screen">
+  <div class="lock-wrap">
+    <div class="reactor" id="reactor">
+      <video id="cam" playsinline muted autoplay></video>
+      <div class="ring ring-a"></div>
+      <div class="ring ring-b"></div>
+      <div class="ring ring-c"></div>
+      <div class="scanline"></div>
+    </div>
+    <h1 class="brand">J.A.R.V.I.S.</h1>
+    <p class="status" id="lock-status">系統待命中</p>
+    <div class="lock-actions">
+      <button class="btn primary" id="btn-scan">開始人臉辨識</button>
+      <button class="btn ghost" id="btn-use-pin">改用密碼進入</button>
+    </div>
+    <div class="pin-pad" id="pin-pad" hidden>
+      <input class="pin-input" id="pin-input" type="password" inputmode="numeric" autocomplete="off"
+             placeholder="輸入備用密碼" maxlength="12">
+      <button class="btn primary" id="btn-pin-ok">解鎖</button>
+    </div>
+    <p class="hint" id="lock-hint"></p>
+  </div>
+</section>
+
+<!-- ── 首次設定 ─────────────────────────────────────────── -->
+<section id="screen-setup" class="screen" hidden>
+  <div class="setup-wrap">
+    <header class="setup-head">
+      <h2 id="setup-title">初始化 JARVIS</h2>
+      <p class="muted" id="setup-sub">建立你的臉部特徵與備用密碼，資料只會留在這支裝置上。</p>
+    </header>
+
+    <ol class="steps">
+      <li class="step" id="step-1">
+        <h3>1 · 你的稱呼</h3>
+        <input class="field" id="setup-name" type="text" placeholder="例如：Tony、老闆、先生" maxlength="20">
+        <p class="muted small">JARVIS 會這樣稱呼你。</p>
+      </li>
+
+      <li class="step" id="step-2">
+        <h3>2 · 臉部建檔</h3>
+        <div class="enroll-box">
+          <div class="reactor small">
+            <video id="enroll-cam" playsinline muted autoplay></video>
+            <div class="ring ring-a"></div>
+          </div>
+          <div class="enroll-side">
+            <p class="muted small" id="enroll-tip">正面對著鏡頭，光線充足，會連拍 5 張特徵。</p>
+            <div class="dots" id="enroll-dots"></div>
+            <button class="btn primary" id="btn-enroll">開始建檔</button>
+          </div>
+        </div>
+      </li>
+
+      <li class="step" id="step-3">
+        <h3>3 · 備用密碼</h3>
+        <input class="field" id="setup-pin" type="password" inputmode="numeric" placeholder="至少 4 位數字" maxlength="12">
+        <input class="field" id="setup-pin2" type="password" inputmode="numeric" placeholder="再輸入一次" maxlength="12">
+        <p class="muted small">辨識失敗、換裝置或戴口罩時用得到。</p>
+      </li>
+
+      <li class="step" id="step-4">
+        <h3>4 · 連線到 Claude</h3>
+        <input class="field" id="setup-key" type="password" placeholder="sk-ant-... （你的 Anthropic API 金鑰）" autocomplete="off">
+        <p class="muted small">
+          金鑰只存在這支手機的瀏覽器裡，直接呼叫 Anthropic API。
+          若你架了代理伺服器，可先跳過，稍後在設定裡填 Proxy 網址。
+        </p>
+      </li>
+    </ol>
+
+    <button class="btn primary wide" id="btn-setup-done">完成設定</button>
+    <p class="hint" id="setup-hint"></p>
+  </div>
+</section>
+
+<!-- ── 主畫面：對話 ─────────────────────────────────────── -->
+<section id="screen-main" class="screen" hidden>
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="dot-live" id="live-dot"></span>
+      <strong>JARVIS</strong>
+      <span class="muted small" id="greeting"></span>
+    </div>
+    <div class="topbar-right">
+      <button class="icon-btn" id="btn-handsfree" title="免持連續對話">🔁</button>
+      <button class="icon-btn" id="btn-speak-toggle" title="語音回覆">🔊</button>
+      <button class="icon-btn" id="btn-settings" title="設定">⚙︎</button>
+      <button class="icon-btn" id="btn-lock" title="立即鎖定">⏻</button>
+    </div>
+  </header>
+
+  <main class="chat" id="chat"></main>
+
+  <footer class="composer">
+    <button class="mic" id="btn-mic" title="按住說話">🎙</button>
+    <textarea id="input" class="input" rows="1" placeholder="對 JARVIS 說點什麼…"></textarea>
+    <button class="send" id="btn-send" title="送出">➤</button>
+  </footer>
+</section>
+
+<!-- ── 設定面板 ─────────────────────────────────────────── -->
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-inner">
+    <div class="sheet-head">
+      <h2>設定</h2>
+      <button class="icon-btn" id="btn-sheet-close">✕</button>
+    </div>
+
+    <label class="row"><span>你的稱呼</span>
+      <input class="field" id="set-name" type="text" maxlength="20"></label>
+
+    <label class="row"><span>助理名稱</span>
+      <input class="field" id="set-assistant" type="text" maxlength="20"></label>
+
+    <label class="row"><span>個性 / 指令</span>
+      <textarea class="field" id="set-persona" rows="3"
+        placeholder="例如：講話精簡、帶點英式管家的幽默、重要事情先講結論。"></textarea></label>
+
+    <label class="row"><span>長期記憶</span>
+      <textarea class="field" id="set-memory" rows="3"
+        placeholder="想讓 JARVIS 一直記得的事：家人、公司、偏好、慣用工具…"></textarea></label>
+
+    <h3 class="sheet-sub">連線</h3>
+    <label class="row"><span>Anthropic API 金鑰</span>
+      <input class="field" id="set-key" type="password" autocomplete="off" placeholder="sk-ant-..."></label>
+    <label class="row"><span>Proxy 網址（選填）</span>
+      <input class="field" id="set-proxy" type="url" placeholder="https://your-worker.workers.dev"></label>
+    <label class="row"><span>模型</span>
+      <select class="field" id="set-model">
+        <option value="claude-opus-5">Claude Opus 5（最聰明）</option>
+        <option value="claude-sonnet-5">Claude Sonnet 5（較省）</option>
+        <option value="claude-haiku-4-5">Claude Haiku 4.5（最快）</option>
+      </select></label>
+    <label class="row"><span>思考深度</span>
+      <select class="field" id="set-effort">
+        <option value="low">低 · 回得最快</option>
+        <option value="medium">中 · 平衡</option>
+        <option value="high">高 · 想得更久</option>
+      </select></label>
+
+    <h3 class="sheet-sub">語音</h3>
+    <label class="row inline"><span>回覆時朗讀</span>
+      <input type="checkbox" id="set-tts"></label>
+    <label class="row inline"><span>免持連續對話（說完自動再聽）</span>
+      <input type="checkbox" id="set-handsfree"></label>
+    <label class="row"><span>語音</span>
+      <select class="field" id="set-voice"></select></label>
+    <label class="row"><span>語速 <b id="rate-val"></b></span>
+      <input type="range" id="set-rate" min="0.6" max="1.6" step="0.05"></label>
+
+    <h3 class="sheet-sub">安全</h3>
+    <label class="row"><span>辨識嚴格度 <b id="thr-val"></b>（數字越小越嚴格）</span>
+      <input type="range" id="set-threshold" min="0.30" max="0.60" step="0.01"></label>
+    <label class="row inline"><span>眨眼活體偵測</span>
+      <input type="checkbox" id="set-liveness"></label>
+    <div class="row btn-row">
+      <button class="btn ghost" id="btn-reenroll">重新建立臉部檔案</button>
+      <button class="btn ghost" id="btn-repin">變更備用密碼</button>
+    </div>
+    <div class="row btn-row">
+      <button class="btn ghost danger" id="btn-clear-chat">清除對話紀錄</button>
+      <button class="btn ghost danger" id="btn-wipe">清除全部資料</button>
+    </div>
+
+    <p class="muted small">
+      提醒：瀏覽器端的人臉辨識擋得住隨手拿起手機的人，但擋不住有心人拿你的照片測試。
+      真正的機密請不要只靠它。
+    </p>
+    <p class="muted small" id="sheet-version"></p>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="./vendor/face-api.js"></script>
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>

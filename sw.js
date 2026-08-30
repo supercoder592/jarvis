@@ -1,0 +1,87 @@
+// Service Worker：讓 JARVIS 可以離線啟動。
+// 外殼（HTML/CSS/JS）預先快取；6MB 的辨識模型第一次用到才抓，之後永久留在快取。
+const VERSION = 'jarvis-v1';
+const SHELL = `${VERSION}-shell`;
+const ASSETS = `${VERSION}-assets`;
+
+const SHELL_FILES = [
+  './',
+  './index.html',
+  './manifest.webmanifest',
+  './css/app.css',
+  './js/app.js',
+  './js/store.js',
+  './js/face.js',
+  './js/voice.js',
+  './js/claude.js',
+  './vendor/face-api.js',
+  './vendor/anthropic-sdk.esm.js',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/apple-touch-icon.png',
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(SHELL)
+      .then((cache) => cache.addAll(SHELL_FILES))
+      .then(() => self.skipWaiting()),
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(
+        keys.filter((k) => !k.startsWith(VERSION)).map((k) => caches.delete(k)),
+      ))
+      .then(() => self.clients.claim()),
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+  // 跨網域（Anthropic API 等）一律直接走網路，不碰快取
+  if (url.origin !== self.location.origin) return;
+
+  // 模型權重：先快取，沒有才下載並存起來
+  if (url.pathname.includes('/models/')) {
+    event.respondWith(cacheFirst(request, ASSETS));
+    return;
+  }
+
+  // 其他同網域資源：先給快取版本，同時在背景更新
+  event.respondWith(staleWhileRevalidate(request, SHELL));
+});
+
+async function cacheFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const hit = await cache.match(request);
+  if (hit) return hit;
+  const res = await fetch(request);
+  if (res.ok) cache.put(request, res.clone());
+  return res;
+}
+
+async function staleWhileRevalidate(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const hit = await cache.match(request);
+  const network = fetch(request)
+    .then((res) => {
+      if (res.ok) cache.put(request, res.clone());
+      return res;
+    })
+    .catch(() => null);
+  if (hit) return hit;
+  const res = await network;
+  if (res) return res;
+  // 離線且沒快取：導頁請求就退回首頁
+  if (request.mode === 'navigate') {
+    const shell = await cache.match('./index.html');
+    if (shell) return shell;
+  }
+  return new Response('離線中，且這個資源尚未快取。', { status: 503, statusText: 'Offline' });
+}
