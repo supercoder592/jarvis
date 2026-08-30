@@ -4,7 +4,7 @@ import Anthropic from '../vendor/anthropic-sdk.esm.js';
 const MAX_TOKENS = 4096;
 const HISTORY_TURNS = 24; // 送給模型的最近對話則數
 
-export function makeClient({ apiKey, proxyUrl }) {
+export function makeClient({ apiKey, proxyUrl, workspaceId }) {
   if (!apiKey && !proxyUrl) {
     throw new Error('還沒設定 API 金鑰。請點右上角 ⚙︎ 填入 Anthropic API 金鑰，或填你的 Proxy 網址。');
   }
@@ -16,6 +16,10 @@ export function makeClient({ apiKey, proxyUrl }) {
     maxRetries: 1,
   };
   if (proxyUrl) opts.baseURL = proxyUrl.replace(/\/+$/, '');
+  // 身分綁定（identity-linked）的金鑰必須指明這次請求要記在哪個 workspace
+  if (workspaceId?.trim()) {
+    opts.defaultHeaders = { 'anthropic-workspace-id': workspaceId.trim() };
+  }
   return new Anthropic(opts);
 }
 
@@ -97,6 +101,11 @@ function friendly(err) {
   if (status === 403) return new Error('這把金鑰沒有權限使用這個模型。');
   if (status === 404) return new Error('找不到這個模型，請在設定裡換一個。');
   if (status === 429) return new Error('速率或額度用完了，等一下再試。');
+  if (status === 400 && /workspace/i.test(err?.message || '')) {
+    return new Error('這把金鑰是「身分綁定」型的，需要指定 workspace。'
+      + '請到 ⚙︎ 設定的「Workspace ID」填入 wrkspc_... （在 Anthropic Console 的 Workspace 頁面網址裡），'
+      + '或改用一把綁定 workspace 的一般金鑰。');
+  }
   if (status === 400 && /credit|balance/i.test(err?.message || '')) {
     return new Error('帳戶餘額不足，請到 Anthropic Console 儲值。');
   }

@@ -1,8 +1,10 @@
 // Service Worker：讓 JARVIS 可以離線啟動。
 // 外殼（HTML/CSS/JS）預先快取；6MB 的辨識模型第一次用到才抓，之後永久留在快取。
-const VERSION = 'jarvis-v1';
+const VERSION = 'jarvis-v2';
 const SHELL = `${VERSION}-shell`;
-const ASSETS = `${VERSION}-assets`;
+// 模型快取刻意不帶版本號，改版時才不會又要重抓 6MB
+const MODELS = 'jarvis-models';
+const LEGACY_MODELS = ['jarvis-v1-assets'];
 
 const SHELL_FILES = [
   './',
@@ -30,14 +32,28 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(
-        keys.filter((k) => !k.startsWith(VERSION)).map((k) => caches.delete(k)),
-      ))
-      .then(() => self.clients.claim()),
-  );
+  event.waitUntil((async () => {
+    await migrateLegacyModels();
+    const keep = new Set([SHELL, MODELS]);
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((k) => !keep.has(k)).map((k) => caches.delete(k)));
+    await self.clients.claim();
+  })());
 });
+
+// 舊版把模型放在帶版本號的快取裡，搬過來就不用重新下載
+async function migrateLegacyModels() {
+  for (const name of LEGACY_MODELS) {
+    if (!(await caches.has(name))) continue;
+    const [from, to] = [await caches.open(name), await caches.open(MODELS)];
+    const requests = await from.keys();
+    await Promise.all(requests.map(async (req) => {
+      if (await to.match(req)) return;
+      const res = await from.match(req);
+      if (res) await to.put(req, res);
+    }));
+  }
+}
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
@@ -49,7 +65,7 @@ self.addEventListener('fetch', (event) => {
 
   // 模型權重：先快取，沒有才下載並存起來
   if (url.pathname.includes('/models/')) {
-    event.respondWith(cacheFirst(request, ASSETS));
+    event.respondWith(cacheFirst(request, MODELS));
     return;
   }
 

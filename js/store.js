@@ -13,6 +13,7 @@ const DEFAULTS = {
   memory: '',
   apiKey: '',
   proxyUrl: '',
+  workspaceId: '',
   model: 'claude-opus-5',
   effort: 'low',
   tts: true,

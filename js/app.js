@@ -4,7 +4,7 @@ import * as fr from './face.js';
 import * as voice from './voice.js';
 import { makeClient, ask } from './claude.js';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const AUTO_LOCK_MS = 5 * 60 * 1000; // 離開 App 超過 5 分鐘就重新上鎖
 
 const $ = (id) => document.getElementById(id);
@@ -17,7 +17,7 @@ const el = {};
   'chat', 'input', 'btn-send', 'btn-mic', 'btn-settings', 'btn-lock', 'btn-speak-toggle',
   'btn-handsfree', 'live-dot', 'greeting',
   'sheet', 'btn-sheet-close', 'set-name', 'set-assistant', 'set-persona', 'set-memory',
-  'set-key', 'set-proxy', 'set-model', 'set-effort', 'set-tts', 'set-handsfree', 'set-voice',
+  'set-key', 'set-workspace', 'set-proxy', 'set-model', 'set-effort', 'set-tts', 'set-handsfree', 'set-voice',
   'set-rate', 'rate-val', 'set-threshold', 'thr-val', 'set-liveness',
   'btn-reenroll', 'btn-repin', 'btn-clear-chat', 'btn-wipe', 'sheet-version', 'toast',
 ].forEach((id) => { el[id] = $(id); });
@@ -449,6 +449,7 @@ function openSheet() {
   el['set-persona'].value = s.persona;
   el['set-memory'].value = s.memory;
   el['set-key'].value = s.apiKey;
+  el['set-workspace'].value = s.workspaceId;
   el['set-proxy'].value = s.proxyUrl;
   el['set-model'].value = s.model;
   el['set-effort'].value = s.effort;
@@ -471,6 +472,7 @@ function saveFromSheet() {
     persona: el['set-persona'].value,
     memory: el['set-memory'].value,
     apiKey: el['set-key'].value.trim(),
+    workspaceId: el['set-workspace'].value.trim(),
     proxyUrl: el['set-proxy'].value.trim(),
     model: el['set-model'].value,
     effort: el['set-effort'].value,
