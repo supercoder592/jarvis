@@ -156,8 +156,10 @@ export async function verify(video, {
   liveness = false,
   onStatus,
   shouldStop,
+  // 新裝置接手時，比對的是剛從雲端拿到的臉部檔案，本機還沒有
+  enrolled: given,
 } = {}) {
-  const enrolled = faceStore.load();
+  const enrolled = given || faceStore.load();
   if (!enrolled) return { ok: false, reason: 'no-enrollment' };
   await loadModels();
 

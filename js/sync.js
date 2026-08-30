@@ -9,16 +9,42 @@ import { encryptJson, decryptJson, utf8ToB64, b64ToUtf8 } from './crypto.js';
 
 const API = 'https://api.github.com';
 
-// 會跟著同步的設定。刻意不含裝置相關的偏好
-//（語音、語速、辨識嚴格度都跟該台裝置的硬體與環境有關）。
+/**
+ * 會跟著同步的設定。
+ *
+ * 刻意不含兩類東西：
+ *  1. 裝置相關的偏好（語音、語速、辨識嚴格度——跟該台裝置的硬體與環境有關）
+ *  2. 任何憑證（API 金鑰、GitHub token）。同步檔放在公開 repo 且沒有密語保護，
+ *     憑證放進去等於公開發布，爬蟲幾小時內就會撿走拿去用。
+ *     金鑰請在每台裝置各自填一次，或用「進階」的連結碼帶過去。
+ */
 export const SYNCED_KEYS = [
   'ownerName', 'assistantName', 'persona', 'memory', 'autoMemory',
-  'provider', 'apiKey', 'geminiKey', 'workspaceId', 'proxyUrl',
-  'model', 'geminiModel', 'effort',
+  'provider', 'model', 'geminiModel', 'effort',
 ];
 
+/**
+ * 沒設自訂密語時的封裝金鑰，由 repo 名稱推導。
+ * 這不是秘密也不假裝是——任何人看原始碼都算得出來。
+ * 它只讓同步檔不是明文（記憶與臉部特徵不會被隨手翻到或被搜尋引擎收錄）。
+ * 真正要保密請到設定填一組自己的密語；憑證則一律不放進這個檔案。
+ */
+function publicEnvelopeKey(s) {
+  return `jarvis-envelope/${s.syncRepo || guessRepo() || 'local'}/v1`;
+}
+
+export function effectivePass(s = settings.all()) {
+  return s.syncPass?.trim() || publicEnvelopeKey(s);
+}
+
+/** 設定裡沒填 repo 就用網址推導出來的，兩條路都要一致 */
+export function resolved(s = settings.all()) {
+  return s.syncRepo ? s : { ...s, syncRepo: guessRepo() };
+}
+
 export function isConfigured(s = settings.all()) {
-  return !!(s.syncRepo && s.syncToken && s.syncPass);
+  const r = resolved(s);
+  return !!(r.syncRepo && r.syncToken);
 }
 
 /**
@@ -169,11 +195,9 @@ function snapshot() {
     const f = faceStore.load();
     if (f) data.face = { enrolledAt: f.enrolledAt, samples: f.samples.map((d) => Array.from(d)) };
   }
-  // 備用密碼存的是加鹽雜湊，跟著加密內容一起走，新裝置配對完就不用再設一次
+  // 備用密碼存的是加鹽雜湊（不是明碼），跟著一起走，新裝置就不用再設一次
   const p = pinStore.raw();
   if (p) data.pin = p;
-  // token 也放進加密內容：新裝置只憑密語把檔案讀下來解開後，就自帶寫入權限
-  if (s.syncToken) data.token = s.syncToken;
   return data;
 }
 
@@ -211,8 +235,6 @@ export function merge(local, remote) {
   if (face) merged.face = face;
   const pinRec = local.pin || remote.pin;
   if (pinRec) merged.pin = pinRec;
-  const token = local.token || remote.token;
-  if (token) merged.token = token;
 
   const changed = JSON.stringify(merged.settings) !== JSON.stringify(local.settings)
     || (face?.enrolledAt || 0) !== (local.face?.enrolledAt || 0);
@@ -231,20 +253,13 @@ function applyLocally(data) {
     }
   }
   if (data.pin && !pinStore.exists()) pinStore.restore(data.pin);
-  if (data.token && !settings.get('syncToken')) {
-    settings.patch({ syncToken: data.token }, { touch: false });
-  }
 }
 
 /**
- * 新裝置接手：只要一組密語。
- * repo 從網址推導、檔案公開可讀、token 藏在加密內容裡，
- * 所以使用者只需要提供那個「只有他知道」的秘密。
+ * 從雲端把資料取回來，但先不寫進本機。
+ * 分兩步是為了讓 App 拿裡面的臉部檔案先驗過臉，確認是本人才真的接手。
  */
-export async function restoreWithPassphrase(passphrase) {
-  const pass = (passphrase || '').trim();
-  if (!pass) throw new Error('請輸入同步密語。');
-
+export async function fetchCloud(passphrase) {
   const s = settings.all();
   const target = {
     syncRepo: s.syncRepo || guessRepo(),
@@ -254,11 +269,24 @@ export async function restoreWithPassphrase(passphrase) {
   if (!target.syncRepo) throw new Error('看不出這個 App 掛在哪個 repo，請到 ⚙︎ 的「進階」手動填一次。');
 
   const envelope = await readPublic(target);
-  const data = await decryptJson(pass, envelope); // 密語不對會在這裡擋下來
-  settings.patch({ ...target, syncPass: pass, syncEnabled: true });
+  const pass = (passphrase || '').trim() || publicEnvelopeKey(target);
+  const data = await decryptJson(pass, envelope);
+  return { data, target, pass };
+}
+
+/** 驗過身分之後才呼叫：把取回的資料寫進這台裝置 */
+export function adoptCloud({ data, target, pass }) {
+  const custom = pass !== publicEnvelopeKey(target);
+  settings.patch({ ...target, ...(custom ? { syncPass: pass } : {}), syncEnabled: true });
   applyLocally(data);
   settings.patch({ syncLastAt: Date.now() }, { touch: false });
-  return data;
+}
+
+/** 一步到位版本，設定面板的「進階」用得到 */
+export async function restoreWithPassphrase(passphrase) {
+  const got = await fetchCloud(passphrase);
+  adoptCloud(got);
+  return got.data;
 }
 
 /**
@@ -266,11 +294,11 @@ export async function restoreWithPassphrase(passphrase) {
  * 回傳 { pulled, pushed }
  */
 export async function syncNow() {
-  const s = settings.all();
-  if (!isConfigured(s)) throw new Error('還沒設定同步，請先填 repo、Token 與密語。');
+  const s = resolved();
+  if (!isConfigured(s)) throw new Error('還沒設定同步，請先到 ⚙︎ 填 GitHub Token。');
 
   const { envelope, sha } = await readRemote(s);
-  const remote = envelope ? await decryptJson(s.syncPass, envelope) : null;
+  const remote = envelope ? await decryptJson(effectivePass(s), envelope) : null;
   const local = snapshot();
   const { data, changed } = merge(local, remote);
 
@@ -281,7 +309,7 @@ export async function syncNow() {
   if (remoteStale) data.updatedAt = Date.now();
 
   if (changed || remoteStale) applyLocally(data);
-  if (remoteStale) await writeRemote(s, await encryptJson(s.syncPass, data), sha);
+  if (remoteStale) await writeRemote(s, await encryptJson(effectivePass(s), data), sha);
 
   settings.patch({ syncLastAt: Date.now() }, { touch: false });
   return { pulled: changed, pushed: remoteStale };

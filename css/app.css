@@ -343,6 +343,8 @@ input[type=checkbox]{width:22px;height:22px;accent-color:var(--cyan)}
   padding:16px;margin-bottom:18px;box-shadow:var(--lift),var(--inner)}
 .pair-box h3{margin:0 0 6px;font-size:15px;color:var(--cyan);letter-spacing:.06em}
 .pair-box .btn{margin-top:12px}
+.pair-scan{display:flex;gap:14px;align-items:center;margin-top:14px}
+.pair-side{flex:1;min-width:0}
 .adv{margin:6px 0 12px;border:1px solid var(--line);border-radius:12px;padding:0 12px;background:rgba(3,10,18,.35)}
 .adv summary{cursor:pointer;padding:11px 0;font-size:13px;color:var(--muted);list-style:none}
 .adv summary::-webkit-details-marker{display:none}

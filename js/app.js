@@ -8,7 +8,7 @@ import * as memory from './memory.js';
 import * as sync from './sync.js';
 import { randomPassphrase } from './crypto.js';
 
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.2.0';
 const AUTO_LOCK_MS = 5 * 60 * 1000; // 離開 App 超過 5 分鐘就重新上鎖
 
 const $ = (id) => document.getElementById(id);
@@ -25,7 +25,7 @@ const el = {};
   'rows-claude', 'rows-gemini', 'row-load-models', 'btn-load-models', 'set-auto-memory', 'set-tts', 'set-handsfree', 'set-voice',
   'set-sync-enabled', 'set-sync-repo', 'set-sync-branch', 'set-sync-path', 'set-sync-token', 'set-sync-pass',
   'set-sync-face', 'btn-sync-gen', 'btn-sync-now', 'btn-sync-copy', 'btn-sync-paste', 'sync-status',
-  'pair-box', 'pair-pass', 'btn-pair-restore',
+  'pair-box', 'btn-pair-face', 'pair-scan', 'pair-cam', 'pair-hint', 'pair-status',
   'set-rate', 'rate-val', 'set-threshold', 'thr-val', 'set-liveness',
   'btn-reenroll', 'btn-repin', 'btn-clear-chat', 'btn-wipe', 'sheet-version', 'toast',
   'btn-face-test', 'btn-face-test-stop', 'face-test', 'face-test-tip', 'test-cam',
@@ -545,29 +545,53 @@ async function syncNow(manual = false) {
 
 // ── 新裝置接手 ──
 
-/** 接手成功後的共用收尾：資料都在了就直接進主畫面 */
-function afterHandover() {
-  if (faceStore.exists() || pinStore.exists()) {
+/**
+ * 掃臉接手：先把雲端資料抓下來（先不寫進本機），
+ * 拿裡面的臉部檔案當比對基準驗過臉，確認是本人才真的套用。
+ */
+async function handoverByFace() {
+  el['btn-pair-face'].disabled = true;
+  hint(el['pair-status'], '');
+  try {
+    hint(el['pair-status'], '確認雲端有沒有你的資料…');
+    const got = await sync.fetchCloud();
+    const samples = got.data.face?.samples;
+    if (!samples?.length) {
+      throw new Error('雲端資料裡沒有臉部檔案，請直接在下面建檔。');
+    }
+    const enrolled = {
+      enrolledAt: got.data.face.enrolledAt,
+      samples: samples.map((a) => Float32Array.from(a)),
+    };
+
+    el['pair-scan'].hidden = false;
+    el['pair-hint'].textContent = '啟動相機…';
+    await fr.startCamera(el['pair-cam']);
+    el['pair-hint'].textContent = '載入辨識模型…';
+    await fr.loadModels();
+
+    const s = settings.all();
+    const result = await fr.verify(el['pair-cam'], {
+      enrolled,                 // 比對剛下載的檔案，本機還沒有
+      threshold: s.threshold,
+      liveness: s.liveness,
+      onStatus: (m) => { el['pair-hint'].textContent = m; },
+    });
+    if (!result.ok) {
+      throw new Error(result.reason === 'no-face'
+        ? '沒偵測到人臉，光線夠嗎？'
+        : '這張臉跟雲端上的檔案對不起來。');
+    }
+
+    sync.adoptCloud(got);
     toast('接手完成，這台裝置已經認得你了');
     unlock();
-  } else {
-    hint(el['setup-hint'], '資料接手完成，但舊裝置沒有臉部檔案，請在下面建檔。');
-  }
-}
-
-/** 只用一組密語把資料接過來（repo 從網址推導、token 藏在加密內容裡） */
-async function restoreByPassphrase() {
-  const pass = el['pair-pass'].value.trim();
-  if (!pass) { hint(el['setup-hint'], '請先輸入同步密語。', true); return; }
-  el['btn-pair-restore'].disabled = true;
-  hint(el['setup-hint'], '正在把資料接過來…');
-  try {
-    await sync.restoreWithPassphrase(pass);
-    afterHandover();
   } catch (err) {
-    hint(el['setup-hint'], err.message, true);
+    hint(el['pair-status'], err.message, true);
   } finally {
-    el['btn-pair-restore'].disabled = false;
+    fr.stopCamera(el['pair-cam']);
+    el['pair-scan'].hidden = true;
+    el['btn-pair-face'].disabled = false;
   }
 }
 
@@ -880,8 +904,7 @@ function wire() {
     if (v && v.replace(/-/g, '').length < 12) toast('這組密語偏短，建議 12 個字以上或改用產生的那組');
   });
 
-  el['btn-pair-restore'].addEventListener('click', restoreByPassphrase);
-  el['pair-pass'].addEventListener('keydown', (e) => { if (e.key === 'Enter') restoreByPassphrase(); });
+  el['btn-pair-face'].addEventListener('click', handoverByFace);
   el['btn-sync-copy'].addEventListener('click', copyLinkCode);
   el['btn-sync-paste'].addEventListener('click', pasteLinkCode);
 
@@ -921,6 +944,7 @@ function wire() {
     fr.stopCamera(el.cam);
     fr.stopCamera(el['enroll-cam']);
     fr.stopCamera(el['test-cam']);
+    fr.stopCamera(el['pair-cam']);
   });
 }
 
