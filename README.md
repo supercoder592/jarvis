@@ -18,7 +18,8 @@
   - 辨識嚴格度可調
 - **語音對話** — 說話輸入（Web Speech API）+ 語音朗讀回覆（可挑聲音、調語速）
   - **免持連續對話**：JARVIS 講完自動再打開麥克風，整段對話不用碰手機
-- **真正的 AI** — 接 Anthropic Claude API，串流回覆，支援長期記憶與個性設定
+- **兩家 AI 供應商** — Claude（Anthropic）或 Gemini（Google，**有免費額度**），
+  在設定裡一鍵切換，兩邊的金鑰與模型各自記住；串流回覆，支援長期記憶與個性設定
 - **加入主畫面就像原生 App** — 全螢幕、有圖示、離線可開（模型會快取在手機上）
 - **立體 HUD 介面** — 透視網格背景、環繞核心的 3D 陀螺環、玻璃質感面板；
   傾斜手機時整組 HUD 會跟著轉（用 DeviceOrientation 做視差，桌機則跟著滑鼠）
@@ -54,7 +55,11 @@ Netlify、Vercel、Cloudflare Pages 直接拖資料夾也可以，這是純靜�
 1. **你的稱呼** — JARVIS 會這樣叫你
 2. **臉部建檔** — 按「開始建檔」，正對鏡頭，等 5 個點都亮起來（第一次要下載約 6MB 的模型，需要一點時間）
 3. **備用密碼** — 至少 4 位，辨識失敗或戴口罩時用
-4. **API 金鑰** — 到 [console.anthropic.com](https://console.anthropic.com/settings/keys) 申請一把 `sk-ant-...` 貼上
+4. **API 金鑰** — 挑一家：
+   - **Gemini（有免費額度，推薦先用這個）**：到 [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+     申請，貼進設定裡的「Gemini API 金鑰」，供應商選 Gemini
+   - **Claude**：到 [console.anthropic.com](https://console.anthropic.com/settings/keys)
+     申請 `sk-ant-...`，是付費的，但比較聰明
 
 完成後就進入對話畫面。之後每次打開都要通過人臉辨識。
 
@@ -80,7 +85,8 @@ App 切到背景超過 5 分鐘會自動重新上鎖。
 
 - **個性 / 指令** — 想要什麼講話風格就寫什麼，例如「像英國管家、句子短、別客套」
 - **長期記憶** — 寫在這裡的東西每次對話都會帶上：家人、公司、偏好、常用工具…
-- **模型** — 預設 Claude Opus 5；想更快更省可改 Sonnet 5 或 Haiku 4.5
+- **AI 供應商** — Claude 或 Gemini，見下面的比較
+- **模型** — 各家的模型清單；Gemini 可以線上查詢最新可用的
 - **Workspace ID** — 只有「身分綁定」型的金鑰才需要填，見下面的疑難排解
 - **思考深度** — 語音對話建議「低」，回得最快；要它認真想事情時改「高」
 - **辨識嚴格度** — 數字越小越嚴格，預設 0.38。認不出自己往上調，家人能解開往下調
@@ -90,12 +96,27 @@ App 切到背景超過 5 分鐘會自動重新上鎖。
 
 ---
 
+## 該用哪一家？
+
+| | Gemini | Claude |
+|---|---|---|
+| 費用 | **有免費額度**，超過才要錢 | 純付費，用多少算多少 |
+| 限制 | 免費額度有每分鐘／每日次數上限 | 沒有免費額度 |
+| 適合 | 日常閒聊、隨手問問題 | 要它認真想事情 |
+| 申請 | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
+
+⚙︎ 設定 →「AI 供應商」可以隨時切換，兩邊的金鑰和模型選擇會各自記住，換來換去不會弄丟。
+
+Gemini 那邊還有一顆「**載入這把金鑰目前可用的模型**」：按下去會直接問 Google
+你這把金鑰現在能用哪些模型，不必擔心內建的名單過時。免費額度用完會回 429，
+App 會直接告訴你「免費額度的用量上限到了」，等幾分鐘或換成 Flash Lite 就好。
+
 ## API 金鑰要放哪？兩種做法
 
 **做法 A（預設，最簡單）**：金鑰填在 App 設定裡，存在手機瀏覽器，直接呼叫 `api.anthropic.com`。
 方便，但任何能解開你手機、進到這個 App 的人都能用你的額度。建議在 Anthropic Console 給這把金鑰設消費上限。
 
-**做法 B（比較安全）**：用 `worker/` 裡的 Cloudflare Worker 當代理，金鑰放在伺服器端，手機上不留金鑰。
+**做法 B（比較安全，目前只支援 Claude）**：用 `worker/` 裡的 Cloudflare Worker 當代理，金鑰放在伺服器端，手機上不留金鑰。
 
 ```bash
 npm i -g wrangler
@@ -162,7 +183,10 @@ js/
   app.js                主流程：畫面切換、解鎖、送訊息、免持迴圈
   face.js               人臉：載模型、開相機、建檔、驗證、眨眼偵測
   voice.js              語音：辨識輸入、朗讀輸出、挑聲音
-  claude.js             Claude：系統提示、串流對話、錯誤翻譯
+  ai.js                 供應商切換：Claude / Gemini 共用同一組介面
+  claude.js             Claude：Anthropic SDK、串流對話、錯誤翻譯
+  gemini.js             Gemini：REST + SSE、線上查詢可用模型、錯誤翻譯
+  prompt.js             兩家共用的人格設定與對話整理
   hud.js                介面：傾斜視差（iOS 需在使用者手勢中要權限）
   store.js              localStorage：設定、臉部特徵、密碼雜湊、對話
 vendor/                 face-api.js 與打包好的 Anthropic SDK
@@ -179,6 +203,10 @@ tools/                  本機伺服器、圖示產生器、端對端測試
 - 網址一定要是 `https://`（GitHub Pages 本來就是）
 - iOS：`設定` → `Safari` → `相機` 設成「詢問」或「允許」
 - 已經拒絕過的話，在 Safari 開同一個網址，長按網址列 → 網站設定 → 重設權限，然後重新加入主畫面
+
+**Gemini 回 429 / 說額度用完**
+- 免費額度有每分鐘與每日的次數上限，等幾分鐘就會恢復
+- 或在設定裡把模型換成 Flash Lite 這種比較省的
 
 **出現 `anthropic-workspace-id is required` 的 400 錯誤**
 - 你那把是「身分綁定（identity-linked）」金鑰，每次請求都要指明用哪個 workspace

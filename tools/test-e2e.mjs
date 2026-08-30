@@ -5,8 +5,8 @@
  *   （或用現成的瀏覽器：CHROMIUM_PATH=/path/to/chrome）
  *   node tools/test-e2e.mjs
  *
- * 驗證項目：模型能在瀏覽器載入、辨識流程可執行、設定精靈的檢查、
- * 密碼解鎖、串流對話渲染、設定儲存、Service Worker 註冊。
+ * 驗證項目：模型能在瀏覽器載入、辨識流程可執行、設定精靈的檢查、密碼解鎖、
+ * 兩家供應商的串流對話、設定儲存、Service Worker 註冊。
  * 人臉「認得出本人」這件事沒辦法在無相機環境測，請用實機確認。
  */
 import { spawn } from 'node:child_process';
@@ -117,7 +117,50 @@ try {
   check('對話有存進 localStorage',
     await page.evaluate(() => JSON.parse(localStorage.getItem('jarvis.chat')).length === 2));
 
-  console.log('\n[5] 設定與離線');
+  console.log('\n[5] 切換到 Gemini');
+  let geminiBody = null;
+  await page.route('**/generativelanguage.googleapis.com/**', async (route) => {
+    const u = new URL(route.request().url());
+    if (u.pathname.endsWith('/models')) {
+      return route.fulfill({ status: 200, headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ models: [
+          { name: 'models/gemini-flash-latest', displayName: 'Gemini Flash', supportedGenerationMethods: ['generateContent'] },
+          { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] },
+        ] }) });
+    }
+    geminiBody = JSON.parse(route.request().postData() || '{}');
+    return route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' },
+      body: 'data: {"candidates":[{"content":{"parts":[{"thought":true,"text":"(思考)"},{"text":"我在。"}],"role":"model"},"finishReason":"STOP"}]}\n\n' });
+  });
+  await page.click('#btn-settings');
+  await page.waitForSelector('#sheet:not([hidden])');
+  await page.selectOption('#set-provider', 'gemini');
+  await page.waitForTimeout(200);
+  check('切換後只顯示 Gemini 欄位',
+    await page.isVisible('#rows-gemini') && await page.isHidden('#rows-claude'));
+  const geminiOpts = await page.$$eval('#set-model option', (o) => o.map((x) => x.value));
+  check('模型清單換成 Gemini', geminiOpts.every((v) => v.startsWith('gemini')), geminiOpts.join(', '));
+  await page.fill('#set-gemini-key', 'AIzaTEST');
+  await page.click('#btn-load-models');
+  await page.waitForTimeout(500);
+  const listed = await page.$$eval('#set-model option', (o) => o.map((x) => x.value));
+  check('線上查詢模型並濾掉 embedding', listed.length === 1 && listed[0] === 'gemini-flash-latest');
+  await page.click('#btn-sheet-close');
+  await page.fill('#input', '你在嗎？');
+  await page.click('#btn-send');
+  await page.waitForFunction(() => document.querySelectorAll('#chat .msg.ai').length > 1, { timeout: 10000 });
+  const geminiReply = await page.$$eval('#chat .msg.ai', (n) => n[n.length - 1].textContent);
+  check('Gemini 回覆進畫面且略過 thought', geminiReply === '我在。', geminiReply);
+  check('送出的 body 結構正確',
+    !!geminiBody?.systemInstruction?.parts?.[0]?.text && geminiBody.contents.at(-1).role === 'user');
+  await page.click('#btn-settings');
+  await page.selectOption('#set-provider', 'claude');
+  await page.waitForTimeout(200);
+  const backOpts = await page.$$eval('#set-model option', (o) => o.map((x) => x.value));
+  check('切回 Claude 的清單沒被污染', backOpts.every((v) => v.startsWith('claude')), backOpts.join(', '));
+  await page.click('#btn-sheet-close');
+
+  console.log('\n[6] 設定與離線');
   await page.click('#btn-settings');
   await page.waitForSelector('#sheet:not([hidden])');
   await page.fill('#set-persona', '像英國管家');

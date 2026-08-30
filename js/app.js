@@ -3,9 +3,9 @@ import { settings, face as faceStore, pin as pinStore, chat as chatStore, wipeAl
 import * as fr from './face.js';
 import * as voice from './voice.js';
 import * as hud from './hud.js';
-import { makeClient, ask } from './claude.js';
+import * as ai from './ai.js';
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.5.0';
 const AUTO_LOCK_MS = 5 * 60 * 1000; // 離開 App 超過 5 分鐘就重新上鎖
 
 const $ = (id) => document.getElementById(id);
@@ -18,7 +18,8 @@ const el = {};
   'chat', 'input', 'btn-send', 'btn-mic', 'btn-settings', 'btn-lock', 'btn-speak-toggle',
   'btn-handsfree', 'live-dot', 'greeting', 'vbars',
   'sheet', 'btn-sheet-close', 'set-name', 'set-assistant', 'set-persona', 'set-memory',
-  'set-key', 'set-workspace', 'set-proxy', 'set-model', 'set-effort', 'set-tts', 'set-handsfree', 'set-voice',
+  'set-provider', 'set-key', 'set-workspace', 'set-gemini-key', 'set-proxy', 'set-model', 'set-effort',
+  'rows-claude', 'rows-gemini', 'row-load-models', 'btn-load-models', 'set-tts', 'set-handsfree', 'set-voice',
   'set-rate', 'rate-val', 'set-threshold', 'thr-val', 'set-liveness',
   'btn-reenroll', 'btn-repin', 'btn-clear-chat', 'btn-wipe', 'sheet-version', 'toast',
   'btn-face-test', 'btn-face-test-stop', 'face-test', 'face-test-tip', 'test-cam',
@@ -115,8 +116,8 @@ async function send(text) {
 
   try {
     const s = settings.all();
-    if (!app.client) app.client = makeClient(s);
-    const reply = await ask({
+    if (!app.client) app.client = ai.makeClient(s);
+    const reply = await ai.ask({
       client: app.client,
       settings: s,
       history: app.history,
@@ -464,10 +465,59 @@ function fillVoiceList() {
 }
 
 const SHEET_FIELDS = [
-  'set-name', 'set-assistant', 'set-persona', 'set-memory', 'set-key', 'set-workspace',
-  'set-proxy', 'set-model', 'set-effort', 'set-tts', 'set-handsfree', 'set-voice',
+  // set-provider 不放進來：它有自己的處理順序（先換模型清單再存），
+  // 否則通用的 change 監聽會搶先把上一家的模型寫進新一家的設定
+  'set-name', 'set-assistant', 'set-persona', 'set-memory', 'set-key',
+  'set-workspace', 'set-gemini-key', 'set-proxy', 'set-model', 'set-effort',
+  'set-tts', 'set-handsfree', 'set-voice',
   'set-rate', 'set-threshold', 'set-liveness',
 ];
+
+// ── 供應商切換 ───────────────────────────────────────────
+function fillModelList(models) {
+  const s = settings.all();
+  const key = el['set-provider'].value;
+  const current = key === 'gemini' ? s.geminiModel : s.model;
+  el['set-model'].innerHTML = '';
+  let list = models || ai.PROVIDERS[key].models;
+  // 目前選的模型不在清單裡（例如自訂或已下架）也要留著，不然會被靜靜換掉
+  if (current && !list.some((m) => m.id === current)) {
+    list = [...list, { id: current, label: `${current}（目前設定）` }];
+  }
+  for (const m of list) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = m.label;
+    el['set-model'].appendChild(opt);
+  }
+  el['set-model'].value = current || list[0]?.id || '';
+}
+
+function syncProviderUi() {
+  const key = el['set-provider'].value;
+  el['rows-claude'].hidden = key !== 'claude';
+  el['rows-gemini'].hidden = key !== 'gemini';
+  el['row-load-models'].hidden = key !== 'gemini';
+  fillModelList();
+}
+
+async function loadModels() {
+  const btn = el['btn-load-models'];
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '查詢中…';
+  try {
+    saveFromSheet();
+    const models = await ai.listModels(settings.all());
+    fillModelList(models);
+    toast(`找到 ${models.length} 個可用模型`);
+  } catch (err) {
+    toast(err.message || '查詢失敗');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
 
 // ── 辨識測試：實際量出鏡頭前這個人的分數 ──────────────────
 function renderProbeRange() {
@@ -543,11 +593,13 @@ function openSheet() {
   el['set-assistant'].value = s.assistantName;
   el['set-persona'].value = s.persona;
   el['set-memory'].value = s.memory;
+  el['set-provider'].value = ai.providerOf(s);
   el['set-key'].value = s.apiKey;
   el['set-workspace'].value = s.workspaceId;
+  el['set-gemini-key'].value = s.geminiKey;
   el['set-proxy'].value = s.proxyUrl;
-  el['set-model'].value = s.model;
   el['set-effort'].value = s.effort;
+  syncProviderUi();
   el['set-tts'].checked = s.tts;
   el['set-handsfree'].checked = s.handsfree;
   el['set-rate'].value = s.rate;
@@ -570,10 +622,14 @@ function saveFromSheet() {
     assistantName: el['set-assistant'].value.trim() || 'JARVIS',
     persona: el['set-persona'].value,
     memory: el['set-memory'].value,
+    provider: el['set-provider'].value,
     apiKey: el['set-key'].value.trim(),
     workspaceId: el['set-workspace'].value.trim(),
+    geminiKey: el['set-gemini-key'].value.trim(),
     proxyUrl: el['set-proxy'].value.trim(),
-    model: el['set-model'].value,
+    ...(el['set-provider'].value === 'gemini'
+      ? { geminiModel: el['set-model'].value }
+      : { model: el['set-model'].value }),
     effort: el['set-effort'].value,
     tts: el['set-tts'].checked,
     handsfree: el['set-handsfree'].checked,
@@ -652,6 +708,14 @@ function wire() {
     voice.speak('好的，這是我的聲音。', { voiceURI: el['set-voice'].value, rate: +el['set-rate'].value });
   });
 
+  el['set-provider'].addEventListener('change', () => {
+    // 順序很重要：先把供應商存好並換掉模型清單，再存整份設定。
+    // 反過來的話，會把上一家的模型名稱寫進新一家的設定裡。
+    settings.patch({ provider: el['set-provider'].value });
+    syncProviderUi();
+    saveFromSheet();
+  });
+  el['btn-load-models'].addEventListener('click', loadModels);
   el['btn-face-test'].addEventListener('click', startProbe);
   el['btn-face-test-stop'].addEventListener('click', stopProbe);
 

@@ -171,18 +171,34 @@
         placeholder="想讓 JARVIS 一直記得的事：家人、公司、偏好、慣用工具…"></textarea></label>
 
     <h3 class="sheet-sub">連線</h3>
-    <label class="row"><span>Anthropic API 金鑰</span>
-      <input class="field" id="set-key" type="password" autocomplete="off" placeholder="sk-ant-..."></label>
-    <label class="row"><span>Workspace ID（金鑰若是身分綁定型才需要）</span>
-      <input class="field" id="set-workspace" type="text" autocomplete="off" placeholder="wrkspc_..."></label>
-    <label class="row"><span>Proxy 網址（選填）</span>
-      <input class="field" id="set-proxy" type="url" placeholder="https://your-worker.workers.dev"></label>
-    <label class="row"><span>模型</span>
-      <select class="field" id="set-model">
-        <option value="claude-opus-5">Claude Opus 5（最聰明）</option>
-        <option value="claude-sonnet-5">Claude Sonnet 5（較省）</option>
-        <option value="claude-haiku-4-5">Claude Haiku 4.5（最快）</option>
+    <label class="row"><span>AI 供應商</span>
+      <select class="field" id="set-provider">
+        <option value="claude">Claude（Anthropic）</option>
+        <option value="gemini">Gemini（Google，有免費額度）</option>
       </select></label>
+
+    <div id="rows-claude">
+      <label class="row"><span>Anthropic API 金鑰</span>
+        <input class="field" id="set-key" type="password" autocomplete="off" placeholder="sk-ant-..."></label>
+      <label class="row"><span>Workspace ID（金鑰若是身分綁定型才需要）</span>
+        <input class="field" id="set-workspace" type="text" autocomplete="off" placeholder="wrkspc_..."></label>
+      <label class="row"><span>Proxy 網址（選填）</span>
+        <input class="field" id="set-proxy" type="url" placeholder="https://your-worker.workers.dev"></label>
+    </div>
+
+    <div id="rows-gemini" hidden>
+      <label class="row"><span>Gemini API 金鑰</span>
+        <input class="field" id="set-gemini-key" type="password" autocomplete="off" placeholder="AIza..."></label>
+      <p class="muted small">
+        到 <b>aistudio.google.com/apikey</b> 免費申請，有免費額度可以用（有每分鐘與每日的次數上限）。
+      </p>
+    </div>
+
+    <label class="row"><span>模型</span>
+      <select class="field" id="set-model"></select></label>
+    <div class="row" id="row-load-models" hidden>
+      <button class="btn ghost wide" id="btn-load-models">載入這把金鑰目前可用的模型</button>
+    </div>
     <label class="row"><span>思考深度</span>
       <select class="field" id="set-effort">
         <option value="low">低 · 回得最快</option>
