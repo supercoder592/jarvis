@@ -21,9 +21,20 @@ export function isConfigured(s = settings.all()) {
   return !!(s.syncRepo && s.syncToken && s.syncPass);
 }
 
+/**
+ * 從網址猜出 repo：App 掛在 owner.github.io/repo/ 底下時，
+ * 同步檔預設就放回同一個 repo，使用者不用自己打。
+ */
+export function guessRepo() {
+  const m = location.hostname.match(/^([\w-]+)\.github\.io$/i);
+  if (!m) return '';
+  const seg = location.pathname.split('/').filter(Boolean)[0];
+  return seg ? `${m[1]}/${seg}` : `${m[1]}/${m[1]}.github.io`;
+}
+
 // ── 連結碼：把 repo / 路徑 / token / 密語 打包成一串，新裝置貼一次就好 ──
 export function makeLinkCode(s = settings.all()) {
-  const payload = { r: s.syncRepo, p: s.syncPath, t: s.syncToken, k: s.syncPass };
+  const payload = { r: s.syncRepo, p: s.syncPath, b: s.syncBranch, t: s.syncToken, k: s.syncPass };
   return `JARVIS1.${utf8ToB64(JSON.stringify(payload)).replace(/=+$/, '')}`;
 }
 
@@ -39,6 +50,7 @@ export function parseLinkCode(code) {
   return {
     syncRepo: payload.r,
     syncPath: payload.p || 'data.json',
+    syncBranch: payload.b || 'jarvis-data',
     syncToken: payload.t,
     syncPass: payload.k,
   };
@@ -64,10 +76,42 @@ async function ghError(res) {
   return new Error(msg || `GitHub 回應錯誤（${res.status}）。`);
 }
 
+/**
+ * 同步檔放在獨立分支，不放 main。
+ * 放 main 的話每同步一次就觸發一次 GitHub Pages 重新部署，
+ * 又吵又可能撞到 Pages 的建置頻率限制——而 App 本身就是靠 Pages 在跑的。
+ */
+async function ensureBranch(s) {
+  const branch = s.syncBranch;
+  const ref = await fetch(`${API}/repos/${s.syncRepo}/git/ref/heads/${encodeURIComponent(branch)}`,
+    { headers: ghHeaders(s.syncToken) });
+  if (ref.ok) return;
+  if (ref.status !== 404) throw await ghError(ref);
+
+  // 分支不存在就從預設分支開一條
+  const repoRes = await fetch(`${API}/repos/${s.syncRepo}`, { headers: ghHeaders(s.syncToken) });
+  if (!repoRes.ok) throw await ghError(repoRes);
+  const { default_branch: base } = await repoRes.json();
+
+  const baseRef = await fetch(`${API}/repos/${s.syncRepo}/git/ref/heads/${encodeURIComponent(base)}`,
+    { headers: ghHeaders(s.syncToken) });
+  if (!baseRef.ok) throw await ghError(baseRef);
+  const sha = (await baseRef.json()).object?.sha;
+
+  const created = await fetch(`${API}/repos/${s.syncRepo}/git/refs`, {
+    method: 'POST',
+    headers: { ...ghHeaders(s.syncToken), 'content-type': 'application/json' },
+    body: JSON.stringify({ ref: `refs/heads/${branch}`, sha }),
+  });
+  // 422 通常代表剛好被另一台裝置建好了
+  if (!created.ok && created.status !== 422) throw await ghError(created);
+}
+
 async function readRemote(s) {
   const url = `${API}/repos/${s.syncRepo}/contents/${encodeURIComponent(s.syncPath)}`;
-  const res = await fetch(`${url}?t=${Date.now()}`, { headers: ghHeaders(s.syncToken), cache: 'no-store' });
-  if (res.status === 404) return { envelope: null, sha: null };  // 還沒建立過
+  const res = await fetch(`${url}?ref=${encodeURIComponent(s.syncBranch)}&t=${Date.now()}`,
+    { headers: ghHeaders(s.syncToken), cache: 'no-store' });
+  if (res.status === 404) return { envelope: null, sha: null };  // 檔案或分支還不存在
   if (!res.ok) throw await ghError(res);
   const body = await res.json();
   let envelope = null;
@@ -80,6 +124,7 @@ async function readRemote(s) {
 }
 
 async function writeRemote(s, envelope, sha) {
+  if (!sha) await ensureBranch(s); // 第一次寫入才需要確認分支在不在
   const url = `${API}/repos/${s.syncRepo}/contents/${encodeURIComponent(s.syncPath)}`;
   const res = await fetch(url, {
     method: 'PUT',
@@ -88,6 +133,7 @@ async function writeRemote(s, envelope, sha) {
       // 固定訊息：commit 歷史是公開的元資料，不必在裡面寫這是什麼 App
       message: 'update',
       content: utf8ToB64(JSON.stringify(envelope, null, 2)),
+      branch: s.syncBranch,
       ...(sha ? { sha } : {}),
     }),
   });

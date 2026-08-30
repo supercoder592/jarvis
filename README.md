@@ -159,10 +159,24 @@ GitHub（和任何拿得到那個檔案的人）只會看到一團密文。
 > 那別人拿你的照片也可以。所以第一次一定要有一個「舊裝置親自交棒」的動作，
 > 那就是這張 QR——之後才是天天掃臉。
 
+### 資料放在哪
+
+預設就存回**這個 App 自己的 repo**（App 掛在 `你的帳號.github.io/jarvis/`，
+它就自動填 `你的帳號/jarvis`），檔案在一條叫 `jarvis-data` 的**獨立分支**上。
+
+分支是重點：同步檔如果放 `main`，每同步一次就觸發一次 GitHub Pages 重新部署，
+又吵、又可能撞上 Pages 的建置頻率限制——而 App 本身就是靠 Pages 在跑的。
+放獨立分支就完全不干擾，網站也不會把這個檔案公開出去。
+
+**如果那個 repo 是公開的**（GitHub Pages 免費方案就是公開的），
+密文等於任何人都下載得到。加密本身擋得住：金鑰是 160 bits 的隨機值，
+不是你想的密碼，暴力破解不可行。但有一個代價要知道——
+**公開的東西會被存檔**，萬一哪天配對 QR 外流，別人手上那份舊檔就能回頭解開。
+放進一個 private repo 就沒這個問題，同步檔小小一個，開一個 private repo 也不花錢。
+
 ### 第一台的設定步驟
 
-1. **開一個 private repo** 放同步檔，例如 `你的帳號/jarvis-data`
-   （⚠️ 不要放在對外公開的 Pages repo 裡）
+1. 決定放哪個 repo：留空就用 App 自己的 repo，或另開一個 private repo 更保險
 2. 產生一把 **fine-grained personal access token**：
    GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens
    - Repository access：**只選那一個 repo**
@@ -170,7 +184,7 @@ GitHub（和任何拿得到那個檔案的人）只會看到一團密文。
    - Expiration：建議設一個到期日，到期再換一把
 3. JARVIS → ⚙︎ →「跨裝置同步」：
    - 勾選「啟用同步」
-   - Repo 填 `你的帳號/private-repo`（檔名預設 `data.json`）
+   - Repo 已自動填好（要換再改），分支預設 `jarvis-data`、檔名 `data.json`
    - 貼上 Token
    - 按「**產生新密語**」→ 得到一組 32 碼的密語（這是解密金鑰，GitHub 永遠拿不到）
    - 按「立即同步」，成功的話下面會顯示同步時間

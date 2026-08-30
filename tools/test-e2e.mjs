@@ -187,13 +187,25 @@ try {
   console.log('\n[7] 跨裝置同步');
   let ghStore = null;
   let ghPuts = 0;
+  let ghBranch = false;
   await page.route('**/api.github.com/**', (route) => {
+    const req = route.request();
+    const { pathname } = new URL(req.url());
     const send = (status, body) => route.fulfill({
       status, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
     });
-    if (route.request().method() === 'GET') return ghStore ? send(200, ghStore) : send(404, { message: 'Not Found' });
+    // 同步檔放在獨立分支，第一次寫入前會先確認／建立分支
+    if (pathname.endsWith('/git/ref/heads/jarvis-data')) {
+      return ghBranch ? send(200, { object: { sha: 'x' } }) : send(404, { message: 'Not Found' });
+    }
+    if (pathname.includes('/git/ref/heads/')) return send(200, { object: { sha: 'base' } });
+    if (pathname.endsWith('/git/refs')) { ghBranch = true; return send(201, {}); }
+    if (!pathname.includes('/contents/')) return send(200, { default_branch: 'main' });
+
+    if (req.method() === 'GET') return ghStore ? send(200, ghStore) : send(404, { message: 'Not Found' });
     ghPuts += 1;
-    const body = JSON.parse(route.request().postData());
+    const body = JSON.parse(req.postData());
+    if (body.branch !== 'jarvis-data') return send(400, { message: `寫錯分支：${body.branch}` });
     if (ghStore && body.sha !== ghStore.sha) return send(409, { message: 'conflict' });
     ghStore = { content: body.content, sha: `sha${ghPuts}` };
     return send(200, {});
@@ -223,6 +235,7 @@ try {
   }, link);
   check('新裝置用連結碼還原記憶與臉部檔案', restored.memory === '住在台北' && restored.face,
     `memory=${restored.memory} face=${restored.face}`);
+  check('同步檔寫在獨立分支，不會動到 Pages 的 main', ghBranch);
   const wrongPass = await page.evaluate(async () => {
     const s = await import('./js/store.js');
     s.settings.patch({ syncPass: 'WRONG-PASS' });

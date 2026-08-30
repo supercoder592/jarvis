@@ -8,7 +8,7 @@ import * as memory from './memory.js';
 import * as sync from './sync.js';
 import { randomPassphrase } from './crypto.js';
 
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.9.0';
 const AUTO_LOCK_MS = 5 * 60 * 1000; // 離開 App 超過 5 分鐘就重新上鎖
 
 const $ = (id) => document.getElementById(id);
@@ -23,7 +23,7 @@ const el = {};
   'sheet', 'btn-sheet-close', 'set-name', 'set-assistant', 'set-persona', 'set-memory',
   'set-provider', 'set-key', 'set-workspace', 'set-gemini-key', 'set-proxy', 'set-model', 'set-effort',
   'rows-claude', 'rows-gemini', 'row-load-models', 'btn-load-models', 'set-auto-memory', 'set-tts', 'set-handsfree', 'set-voice',
-  'set-sync-enabled', 'set-sync-repo', 'set-sync-path', 'set-sync-token', 'set-sync-pass',
+  'set-sync-enabled', 'set-sync-repo', 'set-sync-branch', 'set-sync-path', 'set-sync-token', 'set-sync-pass',
   'set-sync-face', 'btn-sync-gen', 'btn-sync-now', 'btn-sync-copy', 'btn-sync-paste', 'sync-status',
   'pair-box', 'btn-pair-scan', 'pair-scan', 'pair-cam', 'pair-hint', 'btn-pair-cancel',
   'btn-sync-qr', 'btn-sync-scan', 'qr-box', 'qr-canvas', 'btn-qr-hide',
@@ -507,7 +507,7 @@ const SHEET_FIELDS = [
   'set-workspace', 'set-gemini-key', 'set-proxy', 'set-model', 'set-effort',
   'set-tts', 'set-handsfree', 'set-voice',
   'set-rate', 'set-threshold', 'set-liveness',
-  'set-sync-enabled', 'set-sync-repo', 'set-sync-path', 'set-sync-token',
+  'set-sync-enabled', 'set-sync-repo', 'set-sync-branch', 'set-sync-path', 'set-sync-token',
   'set-sync-pass', 'set-sync-face',
 ];
 
@@ -766,7 +766,9 @@ function openSheet() {
   el['thr-val'].textContent = (+s.threshold).toFixed(2);
   el['set-liveness'].checked = s.liveness;
   el['set-sync-enabled'].checked = s.syncEnabled;
-  el['set-sync-repo'].value = s.syncRepo;
+  // 沒填過就用網址推出來的 repo（App 掛在哪就存回哪）
+  el['set-sync-repo'].value = s.syncRepo || sync.guessRepo();
+  el['set-sync-branch'].value = s.syncBranch;
   el['set-sync-path'].value = s.syncPath;
   el['set-sync-token'].value = s.syncToken;
   el['set-sync-pass'].value = s.syncPass;
@@ -805,6 +807,7 @@ function saveFromSheet() {
     liveness: el['set-liveness'].checked,
     syncEnabled: el['set-sync-enabled'].checked,
     syncRepo: el['set-sync-repo'].value.trim(),
+    syncBranch: el['set-sync-branch'].value.trim() || 'jarvis-data',
     syncPath: el['set-sync-path'].value.trim() || 'data.json',
     syncToken: el['set-sync-token'].value.trim(),
     syncPass: el['set-sync-pass'].value.trim(),

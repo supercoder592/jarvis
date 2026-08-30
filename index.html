@@ -236,7 +236,9 @@
       <input type="checkbox" id="set-sync-enabled"></label>
     <p class="muted small">
       資料在這支手機上先用 AES-256 加密才上傳，GitHub 只看得到密文。
-      <b>請用一個 private repo</b>，不要放在對外公開的那個。
+      預設就存回這個 App 自己的 repo，放在獨立分支，不會干擾網站部署。
+      <b>如果那個 repo 是公開的</b>，密文等於公開可下載——加密擋得住，
+      但萬一配對 QR 外流，別人存下來的舊檔就能回頭解開。放 private repo 多一層保險。
     </p>
 
     <div class="row btn-row">
@@ -266,6 +268,8 @@
       <summary>手動設定（用 QR 配對的話不用碰這裡）</summary>
     <label class="row"><span>Repo（owner/repo）</span>
       <input class="field" id="set-sync-repo" type="text" autocomplete="off" placeholder="你的帳號/private-repo"></label>
+    <label class="row"><span>分支</span>
+      <input class="field" id="set-sync-branch" type="text" autocomplete="off" placeholder="jarvis-data"></label>
     <label class="row"><span>檔案路徑</span>
       <input class="field" id="set-sync-path" type="text" autocomplete="off" placeholder="data.json"></label>
     <label class="row"><span>GitHub Token（fine-grained PAT）</span>

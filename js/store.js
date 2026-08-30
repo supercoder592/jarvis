@@ -30,6 +30,7 @@ const DEFAULTS = {
   syncEnabled: false,
   syncRepo: '',            // owner/repo，建議用 private repo
   syncPath: 'data.json',      // 中性檔名；舊使用者已設定的路徑不受影響
+  syncBranch: 'jarvis-data',  // 獨立分支，避免每次同步都觸發 Pages 重新部署
   syncToken: '',           // fine-grained PAT，只給這個 repo 的 Contents 讀寫
   syncPass: '',            // 端對端加密密語，不會離開裝置
   syncFace: true,
