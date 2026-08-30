@@ -337,3 +337,22 @@ input[type=checkbox]{width:22px;height:22px;accent-color:var(--cyan)}
   .rig{transform:none !important}
   .boot span{opacity:.85}
 }
+
+/* ── QR 配對 ── */
+.pair-box{background:var(--panel);border:1px solid var(--line-hot);border-radius:16px;
+  padding:16px;margin-bottom:18px;box-shadow:var(--lift),var(--inner)}
+.pair-box h3{margin:0 0 6px;font-size:15px;color:var(--cyan);letter-spacing:.06em}
+.pair-box .btn{margin-top:12px}
+.pair-scan{display:flex;gap:14px;align-items:center;margin-top:14px}
+.pair-side{flex:1;min-width:0}
+.pair-side .btn{margin-top:8px;padding:8px 12px;font-size:13px}
+.qr-box{text-align:center;margin:12px 0 16px;padding:16px;border-radius:16px;
+  background:var(--panel);border:1px solid var(--line);box-shadow:var(--lift),var(--inner)}
+.qr-box canvas{width:min(260px,70vw);height:auto;border-radius:10px;background:#dbeefc}
+.qr-box .btn{margin-top:10px}
+.adv{margin:6px 0 12px;border:1px solid var(--line);border-radius:12px;padding:0 12px;background:rgba(3,10,18,.35)}
+.adv summary{cursor:pointer;padding:11px 0;font-size:13px;color:var(--muted);list-style:none}
+.adv summary::-webkit-details-marker{display:none}
+.adv summary::before{content:"▸ ";color:var(--cyan)}
+.adv[open] summary::before{content:"▾ "}
+.adv[open]{padding-bottom:6px}

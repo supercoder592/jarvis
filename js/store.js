@@ -136,6 +136,13 @@ export const pin = {
     if (!rec) return false;
     return (await hashPin(value, rec.salt)) === rec.hash;
   },
+  // 配對時一起帶到新裝置。存的是加鹽雜湊，不是明碼
+  raw() {
+    return read(K.pin, null);
+  },
+  restore(rec) {
+    if (rec?.salt && rec?.hash) write(K.pin, rec);
+  },
   clear() {
     localStorage.removeItem(K.pin);
   },

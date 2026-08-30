@@ -75,6 +75,25 @@
       <p class="muted" id="setup-sub">建立你的臉部特徵與備用密碼，資料只會留在這支裝置上。</p>
     </header>
 
+    <div class="pair-box" id="pair-box">
+      <h3>已經有另一台裝置？</h3>
+      <p class="muted small">
+        在舊裝置打開 ⚙︎ →「顯示配對 QR」，用這裡掃一下，
+        記憶、金鑰、臉部檔案全部直接接手，下面的步驟都可以跳過。
+      </p>
+      <button class="btn primary wide" id="btn-pair-scan">掃描配對 QR</button>
+      <div class="pair-scan" id="pair-scan" hidden>
+        <div class="reactor small">
+          <video id="pair-cam" playsinline muted autoplay></video>
+          <div class="ring ring-a"></div>
+        </div>
+        <div class="pair-side">
+          <p class="muted small" id="pair-hint">把舊裝置的 QR 對準鏡頭…</p>
+          <button class="btn ghost" id="btn-pair-cancel">取消</button>
+        </div>
+      </div>
+    </div>
+
     <ol class="steps">
       <li class="step" id="step-1">
         <h3>1 · 你的稱呼</h3>
@@ -220,6 +239,31 @@
       <b>請用一個 private repo</b>，不要放在對外公開的那個。
     </p>
 
+    <div class="row btn-row">
+      <button class="btn ghost" id="btn-sync-qr">顯示配對 QR</button>
+      <button class="btn ghost" id="btn-sync-scan">掃描配對 QR</button>
+    </div>
+    <div class="qr-box" id="qr-box" hidden>
+      <canvas id="qr-canvas"></canvas>
+      <p class="muted small">
+        這張 QR 等於整套鑰匙（Token + 解密密語）。只給你自己的裝置掃，
+        不要拍給別人、也不要留在相簿裡。
+      </p>
+      <button class="btn ghost" id="btn-qr-hide">收起來</button>
+    </div>
+    <div class="pair-scan" id="sync-scan" hidden>
+      <div class="reactor small">
+        <video id="sync-cam" playsinline muted autoplay></video>
+        <div class="ring ring-a"></div>
+      </div>
+      <div class="pair-side">
+        <p class="muted small" id="sync-scan-hint">把另一台裝置的 QR 對準鏡頭…</p>
+        <button class="btn ghost" id="btn-sync-scan-cancel">取消</button>
+      </div>
+    </div>
+
+    <details class="adv">
+      <summary>手動設定（用 QR 配對的話不用碰這裡）</summary>
     <label class="row"><span>Repo（owner/repo）</span>
       <input class="field" id="set-sync-repo" type="text" autocomplete="off" placeholder="你的帳號/private-repo"></label>
     <label class="row"><span>檔案路徑</span>
@@ -233,11 +277,13 @@
 
     <div class="row btn-row">
       <button class="btn ghost" id="btn-sync-gen">產生新密語</button>
-      <button class="btn ghost" id="btn-sync-now">立即同步</button>
-    </div>
-    <div class="row btn-row">
       <button class="btn ghost" id="btn-sync-copy">複製連結碼</button>
       <button class="btn ghost" id="btn-sync-paste">貼上連結碼</button>
+    </div>
+    </details>
+
+    <div class="row btn-row">
+      <button class="btn ghost" id="btn-sync-now">立即同步</button>
     </div>
     <p class="muted small" id="sync-status">尚未同步</p>
 

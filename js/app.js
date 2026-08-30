@@ -8,7 +8,7 @@ import * as memory from './memory.js';
 import * as sync from './sync.js';
 import { randomPassphrase } from './crypto.js';
 
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 const AUTO_LOCK_MS = 5 * 60 * 1000; // 離開 App 超過 5 分鐘就重新上鎖
 
 const $ = (id) => document.getElementById(id);
@@ -25,6 +25,9 @@ const el = {};
   'rows-claude', 'rows-gemini', 'row-load-models', 'btn-load-models', 'set-auto-memory', 'set-tts', 'set-handsfree', 'set-voice',
   'set-sync-enabled', 'set-sync-repo', 'set-sync-path', 'set-sync-token', 'set-sync-pass',
   'set-sync-face', 'btn-sync-gen', 'btn-sync-now', 'btn-sync-copy', 'btn-sync-paste', 'sync-status',
+  'pair-box', 'btn-pair-scan', 'pair-scan', 'pair-cam', 'pair-hint', 'btn-pair-cancel',
+  'btn-sync-qr', 'btn-sync-scan', 'qr-box', 'qr-canvas', 'btn-qr-hide',
+  'sync-scan', 'sync-cam', 'sync-scan-hint', 'btn-sync-scan-cancel',
   'set-rate', 'rate-val', 'set-threshold', 'thr-val', 'set-liveness',
   'btn-reenroll', 'btn-repin', 'btn-clear-chat', 'btn-wipe', 'sheet-version', 'toast',
   'btn-face-test', 'btn-face-test-stop', 'face-test', 'face-test-tip', 'test-cam',
@@ -391,6 +394,7 @@ function openSetup(mode = 'first') {
   el['step-3'].hidden = onlyFace;
   el['step-4'].hidden = onlyFace || onlyPin;
   el['step-2'].hidden = onlyPin;
+  el['pair-box'].hidden = mode !== 'first';
   el['setup-title'].textContent = onlyFace ? '重新建立臉部檔案' : onlyPin ? '變更備用密碼' : '初始化 JARVIS';
   el['setup-sub'].textContent = onlyPin
     ? '設定一組新的備用密碼。'
@@ -541,6 +545,57 @@ async function syncNow(manual = false) {
   }
 }
 
+// ── QR 配對：新裝置掃一次，整套設定就過去了 ──
+let stopScan = null;
+
+async function showPairQr() {
+  saveFromSheet();
+  if (!sync.isConfigured()) { toast('請先設定好同步，或按「產生新密語」'); return; }
+  const qr = await import('./qr.js');
+  await qr.draw(el['qr-canvas'], sync.makeLinkCode());
+  el['qr-box'].hidden = false;
+  el['qr-box'].scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+/**
+ * 開相機找 QR。掃到就套用設定並立刻同步一次。
+ * panel/video/hint 讓首次設定畫面與設定面板共用同一套流程。
+ */
+async function startPairScan({ panel, video, hint: hintEl, onDone }) {
+  const qr = await import('./qr.js');
+  panel.hidden = false;
+  hintEl.textContent = '啟動相機…';
+  try {
+    await fr.startCamera(video);
+    hintEl.textContent = '把另一台裝置的 QR 對準鏡頭…';
+    stopScan = qr.scan(video, {
+      onFound: async (text) => {
+        stopPairScan();
+        try {
+          settings.patch({ ...sync.parseLinkCode(text), syncEnabled: true });
+          hintEl.textContent = '掃到了，正在接手資料…';
+          await sync.syncNow();
+          onDone?.();
+        } catch (err) {
+          hintEl.textContent = err.message;
+          toast(err.message);
+        }
+      },
+    });
+  } catch (err) {
+    hintEl.textContent = cameraError(err);
+  }
+}
+
+function stopPairScan() {
+  stopScan?.();
+  stopScan = null;
+  fr.stopCamera(el['pair-cam']);
+  fr.stopCamera(el['sync-cam']);
+  el['pair-scan'].hidden = true;
+  el['sync-scan'].hidden = true;
+}
+
 async function copyLinkCode() {
   saveFromSheet();
   if (!sync.isConfigured()) { toast('請先填好 repo、Token 與密語'); return; }
@@ -684,6 +739,8 @@ function stopProbe() {
 function closeSheet() {
   saveFromSheet();
   stopProbe();
+  stopPairScan();
+  el['qr-box'].hidden = true;
   el.sheet.hidden = true;
 }
 
@@ -841,6 +898,28 @@ function wire() {
     toast('新密語已產生，記得用「複製連結碼」帶到其他裝置');
   });
   el['btn-sync-now'].addEventListener('click', () => { saveFromSheet(); syncNow(true); });
+  el['btn-sync-qr'].addEventListener('click', showPairQr);
+  el['btn-qr-hide'].addEventListener('click', () => { el['qr-box'].hidden = true; });
+  el['btn-sync-scan'].addEventListener('click', () => startPairScan({
+    panel: el['sync-scan'], video: el['sync-cam'], hint: el['sync-scan-hint'],
+    onDone: () => { stopPairScan(); openSheet(); toast('配對完成，資料已接手'); },
+  }));
+  el['btn-sync-scan-cancel'].addEventListener('click', stopPairScan);
+
+  el['btn-pair-scan'].addEventListener('click', () => startPairScan({
+    panel: el['pair-scan'], video: el['pair-cam'], hint: el['pair-hint'],
+    onDone: () => {
+      stopPairScan();
+      // 臉部檔案與備用密碼都跟著過來了，直接進主畫面，不用再走設定精靈
+      if (faceStore.exists() || pinStore.exists()) {
+        toast('配對完成，這台裝置已經認得你了');
+        unlock();
+      } else {
+        hint(el['setup-hint'], '資料接手完成，但舊裝置沒有臉部檔案，請在下面建檔。');
+      }
+    },
+  }));
+  el['btn-pair-cancel'].addEventListener('click', stopPairScan);
   el['btn-sync-copy'].addEventListener('click', copyLinkCode);
   el['btn-sync-paste'].addEventListener('click', pasteLinkCode);
 
@@ -870,6 +949,7 @@ function wire() {
       voice.stopSpeaking();
       if (app.scanning) { app.scanning = false; fr.stopCamera(el.cam); }
       stopProbe();
+      stopPairScan();
     } else if (app.unlocked && app.hiddenAt && Date.now() - app.hiddenAt > AUTO_LOCK_MS) {
       lock();
     } else if (app.unlocked) {
@@ -880,6 +960,7 @@ function wire() {
     fr.stopCamera(el.cam);
     fr.stopCamera(el['enroll-cam']);
     fr.stopCamera(el['test-cam']);
+    stopPairScan();
   });
 }
 

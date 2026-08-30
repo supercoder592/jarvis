@@ -4,7 +4,7 @@
 //  1. 加密在裝置上完成，GitHub 只看得到密文（連 GitHub 也解不開）
 //  2. 建議把這個檔案放在「另一個 private repo」，不要放進公開的 Pages repo
 //  3. Token 用 fine-grained PAT，只給那一個 repo 的 Contents 讀寫權限
-import { settings, face as faceStore } from './store.js';
+import { settings, face as faceStore, pin as pinStore } from './store.js';
 import { encryptJson, decryptJson, utf8ToB64, b64ToUtf8 } from './crypto.js';
 
 const API = 'https://api.github.com';
@@ -104,6 +104,9 @@ function snapshot() {
     const f = faceStore.load();
     if (f) data.face = { enrolledAt: f.enrolledAt, samples: f.samples.map((d) => Array.from(d)) };
   }
+  // 備用密碼存的是加鹽雜湊，跟著加密內容一起走，新裝置配對完就不用再設一次
+  const p = pinStore.raw();
+  if (p) data.pin = p;
   return data;
 }
 
@@ -139,6 +142,8 @@ export function merge(local, remote) {
   const face = (remote.face?.enrolledAt || 0) > (local.face?.enrolledAt || 0) ? remote.face : local.face;
   const merged = { v: 1, updatedAt: Math.max(local.updatedAt || 0, remote.updatedAt || 0), settings: base };
   if (face) merged.face = face;
+  const pinRec = local.pin || remote.pin;
+  if (pinRec) merged.pin = pinRec;
 
   const changed = JSON.stringify(merged.settings) !== JSON.stringify(local.settings)
     || (face?.enrolledAt || 0) !== (local.face?.enrolledAt || 0);
@@ -156,6 +161,7 @@ function applyLocally(data) {
       faceStore.save(data.face.samples.map((a) => Float32Array.from(a)));
     }
   }
+  if (data.pin && !pinStore.exists()) pinStore.restore(data.pin);
 }
 
 /**

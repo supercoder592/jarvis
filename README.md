@@ -142,7 +142,24 @@ wrangler deploy
 把一份**加密過的 JSON** 放在你自己的 GitHub repo 裡當中繼站。加密與解密都在裝置上做，
 GitHub（和任何拿得到那個檔案的人）只會看到一團密文。
 
-### 設定步驟
+### 換新裝置：掃一次 QR 就好
+
+第二台之後的裝置**不用打任何東西**：
+
+1. 舊裝置：⚙︎ →「**顯示配對 QR**」
+2. 新裝置：打開 App，第一個畫面就有「**掃描配對 QR**」→ 對準舊裝置
+3. 完成。記憶、金鑰、臉部檔案、備用密碼全部接手，直接進主畫面
+
+之後這台就跟舊的一樣：**開 App → 掃臉 → 進去**，背景自動同步。
+
+> **為什麼不能「只靠掃臉」就把資料帶到新手機？**
+> 臉部特徵每次掃出來的數值都不一樣（本來就是靠「夠接近」在比對），
+> 沒辦法拿來當固定的解密金鑰；而全新的裝置手上沒有你的臉部檔案，
+> 也就沒有東西可以比對。更重要的是：如果一張臉就能從雲端把 API 金鑰拉下來，
+> 那別人拿你的照片也可以。所以第一次一定要有一個「舊裝置親自交棒」的動作，
+> 那就是這張 QR——之後才是天天掃臉。
+
+### 第一台的設定步驟
 
 1. **開一個 private repo** 放同步檔，例如 `你的帳號/jarvis-data`
    （⚠️ 不要放在對外公開的 Pages repo 裡）
@@ -157,8 +174,7 @@ GitHub（和任何拿得到那個檔案的人）只會看到一團密文。
    - 貼上 Token
    - 按「**產生新密語**」→ 得到一組 32 碼的密語（這是解密金鑰，GitHub 永遠拿不到）
    - 按「立即同步」，成功的話下面會顯示同步時間
-4. 到第二台裝置：⚙︎ →「**貼上連結碼**」
-   （在第一台按「複製連結碼」，把那串貼過去，repo／Token／密語會一次填好）
+4. 到第二台裝置：用上面的 QR 配對（或 ⚙︎ →「貼上連結碼」手動貼）
 
 之後解鎖時、切回 App 時、以及記憶有更新時，都會自動在背景同步。
 
@@ -168,7 +184,8 @@ GitHub（和任何拿得到那個檔案的人）只會看到一團密文。
 |---|---|
 | 長期記憶、稱呼、個性指令 | 對話紀錄 |
 | API 金鑰、供應商、模型選擇 | 語音、語速、朗讀開關 |
-| 臉部辨識檔案（可關閉） | 辨識嚴格度、眨眼偵測、備用密碼 |
+| 臉部辨識檔案（可關閉） | 辨識嚴格度、眨眼偵測 |
+| 備用密碼（存的是加鹽雜湊） | |
 
 語音與辨識設定跟該台裝置的硬體、環境有關，所以刻意留在本機。
 
@@ -264,6 +281,7 @@ js/
   memory.js             自動記憶：解析助理寫的記憶標籤、合併去重、上限管理
   crypto.js             端對端加密：PBKDF2 導金鑰、AES-256-GCM、密語產生
   sync.js               跨裝置同步：GitHub Contents API、合併策略、背景排程
+  qr.js                 配對 QR：產生與相機掃描
   hud.js                介面：傾斜視差（iOS 需在使用者手勢中要權限）
   store.js              localStorage：設定、臉部特徵、密碼雜湊、對話
 vendor/                 face-api.js 與打包好的 Anthropic SDK
@@ -330,5 +348,6 @@ tools/                  本機伺服器、圖示產生器、端對端測試
 
 - [face-api.js](https://github.com/vladmandic/face-api)（`@vladmandic/face-api`）— MIT，`vendor/face-api.LICENSE`
 - [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript) — MIT，`vendor/anthropic-sdk.LICENSE`
+- [jsQR](https://github.com/cozmo/jsQR)（掃描）與 [node-qrcode](https://github.com/soldair/node-qrcode)（產生）— Apache-2.0 / MIT，`vendor/jsqr.LICENSE`、`vendor/qrcode.LICENSE`
 
 模型權重來自 face-api.js 專案，已放進 `models/`，讓 App 不依賴任何 CDN。
