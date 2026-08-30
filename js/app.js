@@ -5,8 +5,10 @@ import * as voice from './voice.js';
 import * as hud from './hud.js';
 import * as ai from './ai.js';
 import * as memory from './memory.js';
+import * as sync from './sync.js';
+import { randomPassphrase } from './crypto.js';
 
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 const AUTO_LOCK_MS = 5 * 60 * 1000; // 離開 App 超過 5 分鐘就重新上鎖
 
 const $ = (id) => document.getElementById(id);
@@ -21,6 +23,8 @@ const el = {};
   'sheet', 'btn-sheet-close', 'set-name', 'set-assistant', 'set-persona', 'set-memory',
   'set-provider', 'set-key', 'set-workspace', 'set-gemini-key', 'set-proxy', 'set-model', 'set-effort',
   'rows-claude', 'rows-gemini', 'row-load-models', 'btn-load-models', 'set-auto-memory', 'set-tts', 'set-handsfree', 'set-voice',
+  'set-sync-enabled', 'set-sync-repo', 'set-sync-path', 'set-sync-token', 'set-sync-pass',
+  'set-sync-face', 'btn-sync-gen', 'btn-sync-now', 'btn-sync-copy', 'btn-sync-paste', 'sync-status',
   'set-rate', 'rate-val', 'set-threshold', 'thr-val', 'set-liveness',
   'btn-reenroll', 'btn-repin', 'btn-clear-chat', 'btn-wipe', 'sheet-version', 'toast',
   'btn-face-test', 'btn-face-test-stop', 'face-test', 'face-test-tip', 'test-cam',
@@ -164,6 +168,7 @@ function applyMemory(reply) {
   const result = memory.merge(settings.get('memory'), { adds, removes });
   if (result.added.length || result.removed.length) {
     settings.patch({ memory: result.memory });
+    sync.schedule(); // 新記到的事推到其他裝置
     const notes = [
       ...result.added.map((t) => `已記住：${t}`),
       ...result.removed.map((t) => `已忘記：${t}`),
@@ -261,6 +266,7 @@ function unlock() {
   el['pin-pad'].hidden = true;
   el['pin-input'].value = '';
   if (settings.get('handsfree')) setTimeout(() => startListening(), 600);
+  sync.schedule(1200); // 解鎖後先跟雲端對一次，拿到其他裝置的更新
 }
 
 function lock() {
@@ -497,7 +503,75 @@ const SHEET_FIELDS = [
   'set-workspace', 'set-gemini-key', 'set-proxy', 'set-model', 'set-effort',
   'set-tts', 'set-handsfree', 'set-voice',
   'set-rate', 'set-threshold', 'set-liveness',
+  'set-sync-enabled', 'set-sync-repo', 'set-sync-path', 'set-sync-token',
+  'set-sync-pass', 'set-sync-face',
 ];
+
+// ── 跨裝置同步 ───────────────────────────────────────────
+function renderSyncStatus(extra) {
+  const s = settings.all();
+  if (extra) { el['sync-status'].textContent = extra; return; }
+  if (!s.syncEnabled) { el['sync-status'].textContent = '同步關閉中'; return; }
+  if (!sync.isConfigured(s)) { el['sync-status'].textContent = '還缺 repo、Token 或密語'; return; }
+  el['sync-status'].textContent = s.syncLastAt
+    ? `上次同步：${new Date(s.syncLastAt).toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short' })}`
+    : '已設定，還沒同步過';
+}
+
+async function syncNow(manual = false) {
+  if (!sync.isConfigured()) {
+    if (manual) toast('請先填好 repo、Token 與密語');
+    return;
+  }
+  renderSyncStatus('同步中…');
+  try {
+    const r = await sync.syncNow();
+    if (r.pulled) {
+      // 雲端有比較新的資料，畫面上的設定要跟著更新
+      if (!el.sheet.hidden) openSheet();
+      const s = settings.all();
+      el.greeting.textContent = s.ownerName ? `· ${s.ownerName}` : '';
+      app.client = null;
+    }
+    renderSyncStatus();
+    if (manual) toast(r.pulled ? '同步完成，已套用雲端的更新' : '同步完成');
+  } catch (err) {
+    renderSyncStatus(`同步失敗：${err.message}`);
+    if (manual) toast(err.message);
+  }
+}
+
+async function copyLinkCode() {
+  saveFromSheet();
+  if (!sync.isConfigured()) { toast('請先填好 repo、Token 與密語'); return; }
+  const code = sync.makeLinkCode();
+  try {
+    await navigator.clipboard.writeText(code);
+    toast('連結碼已複製，到另一台裝置貼上即可');
+  } catch {
+    // 有些情況拿不到剪貼簿權限，就直接顯示讓使用者自己複製
+    el['set-sync-pass'].value = code;
+    toast('無法自動複製，密語欄位已換成連結碼，請手動複製');
+  }
+}
+
+async function pasteLinkCode() {
+  let code = '';
+  try {
+    code = await navigator.clipboard.readText();
+  } catch {
+    code = prompt('貼上另一台裝置的連結碼：') || '';
+  }
+  if (!code.trim()) return;
+  try {
+    settings.patch({ ...sync.parseLinkCode(code), syncEnabled: true });
+    openSheet();
+    toast('連結碼已套用，開始同步…');
+    await syncNow(true);
+  } catch (err) {
+    toast(err.message);
+  }
+}
 
 // ── 供應商切換 ───────────────────────────────────────────
 function fillModelList(models) {
@@ -634,6 +708,13 @@ function openSheet() {
   el['set-threshold'].value = s.threshold;
   el['thr-val'].textContent = (+s.threshold).toFixed(2);
   el['set-liveness'].checked = s.liveness;
+  el['set-sync-enabled'].checked = s.syncEnabled;
+  el['set-sync-repo'].value = s.syncRepo;
+  el['set-sync-path'].value = s.syncPath;
+  el['set-sync-token'].value = s.syncToken;
+  el['set-sync-pass'].value = s.syncPass;
+  el['set-sync-face'].checked = s.syncFace !== false;
+  renderSyncStatus();
   el['sheet-version'].textContent = `版本 ${APP_VERSION} · 資料僅存於本機`;
   fillVoiceList();
   el['face-test'].hidden = true;
@@ -665,11 +746,19 @@ function saveFromSheet() {
     rate: +el['set-rate'].value,
     threshold: +el['set-threshold'].value,
     liveness: el['set-liveness'].checked,
+    syncEnabled: el['set-sync-enabled'].checked,
+    syncRepo: el['set-sync-repo'].value.trim(),
+    syncPath: el['set-sync-path'].value.trim() || 'jarvis-sync.json',
+    syncToken: el['set-sync-token'].value.trim(),
+    syncPass: el['set-sync-pass'].value.trim(),
+    syncFace: el['set-sync-face'].checked,
   });
   app.client = null; // 連線設定可能變了，下次重建
   el['rate-val'].textContent = `${(+el['set-rate'].value).toFixed(2)}x`;
   el['thr-val'].textContent = (+el['set-threshold'].value).toFixed(2);
   renderProbeRange();
+  renderSyncStatus();
+  sync.schedule(6000); // 設定改完一段時間沒再動，就推上去
   const s = settings.all();
   el.greeting.textContent = s.ownerName ? `· ${s.ownerName}` : '';
   syncTtsUi();
@@ -744,6 +833,17 @@ function wire() {
     saveFromSheet();
   });
   el['btn-load-models'].addEventListener('click', loadModels);
+  el['btn-sync-gen'].addEventListener('click', () => {
+    if (el['set-sync-pass'].value.trim()
+      && !confirm('換掉密語之後，這台裝置就解不開雲端上現有的資料了。確定要產生新的嗎？')) return;
+    el['set-sync-pass'].value = randomPassphrase();
+    saveFromSheet();
+    toast('新密語已產生，記得用「複製連結碼」帶到其他裝置');
+  });
+  el['btn-sync-now'].addEventListener('click', () => { saveFromSheet(); syncNow(true); });
+  el['btn-sync-copy'].addEventListener('click', copyLinkCode);
+  el['btn-sync-paste'].addEventListener('click', pasteLinkCode);
+
   el['btn-face-test'].addEventListener('click', startProbe);
   el['btn-face-test-stop'].addEventListener('click', stopProbe);
 
@@ -772,6 +872,8 @@ function wire() {
       stopProbe();
     } else if (app.unlocked && app.hiddenAt && Date.now() - app.hiddenAt > AUTO_LOCK_MS) {
       lock();
+    } else if (app.unlocked) {
+      sync.schedule(1500); // 回到前景時看看其他裝置有沒有新東西
     }
   });
   window.addEventListener('pagehide', () => {
@@ -786,6 +888,17 @@ function boot() {
   if (migrate()) console.info('設定已升級到新的比對方式');
   wire();
   hud.attach(el.rig);
+  sync.setStatusHandler((r) => {
+    if (!r.ok) { renderSyncStatus(`同步失敗：${r.message}`); return; }
+    renderSyncStatus();
+    if (r.pulled) {
+      const s = settings.all();
+      el.greeting.textContent = s.ownerName ? `· ${s.ownerName}` : '';
+      app.client = null;
+      if (!el.sheet.hidden) openSheet();
+      toast('已從其他裝置同步到新資料');
+    }
+  });
   if (voice.ttsSupported) window.speechSynthesis.addEventListener?.('voiceschanged', fillVoiceList);
 
   if (!faceStore.exists() && !pinStore.exists()) {

@@ -212,6 +212,35 @@
         <option value="high">高 · 想得更久</option>
       </select></label>
 
+    <h3 class="sheet-sub">跨裝置同步</h3>
+    <label class="row inline"><span>啟用同步</span>
+      <input type="checkbox" id="set-sync-enabled"></label>
+    <p class="muted small">
+      資料在這支手機上先用 AES-256 加密才上傳，GitHub 只看得到密文。
+      <b>請用一個 private repo</b>，不要放在對外公開的那個。
+    </p>
+
+    <label class="row"><span>Repo（owner/repo）</span>
+      <input class="field" id="set-sync-repo" type="text" autocomplete="off" placeholder="你的帳號/jarvis-data"></label>
+    <label class="row"><span>檔案路徑</span>
+      <input class="field" id="set-sync-path" type="text" autocomplete="off" placeholder="jarvis-sync.json"></label>
+    <label class="row"><span>GitHub Token（fine-grained PAT）</span>
+      <input class="field" id="set-sync-token" type="password" autocomplete="off" placeholder="github_pat_..."></label>
+    <label class="row"><span>同步密語（解密用，GitHub 拿不到）</span>
+      <input class="field" id="set-sync-pass" type="text" autocomplete="off" placeholder="按下面的按鈕產生"></label>
+    <label class="row inline"><span>連臉部檔案也同步</span>
+      <input type="checkbox" id="set-sync-face"></label>
+
+    <div class="row btn-row">
+      <button class="btn ghost" id="btn-sync-gen">產生新密語</button>
+      <button class="btn ghost" id="btn-sync-now">立即同步</button>
+    </div>
+    <div class="row btn-row">
+      <button class="btn ghost" id="btn-sync-copy">複製連結碼</button>
+      <button class="btn ghost" id="btn-sync-paste">貼上連結碼</button>
+    </div>
+    <p class="muted small" id="sync-status">尚未同步</p>
+
     <h3 class="sheet-sub">語音</h3>
     <label class="row inline"><span>回覆時朗讀</span>
       <input type="checkbox" id="set-tts"></label>

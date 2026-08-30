@@ -26,6 +26,15 @@ const DEFAULTS = {
   rate: 1.0,
   threshold: 0.38,
   liveness: false,
+  // 跨裝置同步（GitHub 上一個加密的 JSON 檔）
+  syncEnabled: false,
+  syncRepo: '',            // owner/repo，建議用 private repo
+  syncPath: 'jarvis-sync.json',
+  syncToken: '',           // fine-grained PAT，只給這個 repo 的 Contents 讀寫
+  syncPass: '',            // 端對端加密密語，不會離開裝置
+  syncFace: true,
+  syncLastAt: 0,
+  updatedAt: 0,             // 這台裝置最後一次改設定的時間，同步比對新舊用
   schema: 2,
 };
 
@@ -55,8 +64,14 @@ export const settings = {
   get(name) {
     return this.all()[name];
   },
-  patch(partial) {
+  /**
+   * touch=false 用於同步本身寫回來的資料：
+   * updatedAt 代表「這台裝置最後一次改設定的時間」，是同步比對新舊的依據，
+   * 同步流程自己寫入時不能把它推成現在，否則本機永遠看起來比雲端新。
+   */
+  patch(partial, { touch = true } = {}) {
     const next = { ...this.all(), ...partial };
+    if (touch) next.updatedAt = Date.now();
     write(K.settings, next);
     return next;
   },

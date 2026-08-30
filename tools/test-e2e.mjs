@@ -45,7 +45,12 @@ const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+page.on('console', (m) => {
+  if (m.type() !== 'error') return;
+  // 同步第一次一定會對還不存在的檔案拿到 404，那是預期行為不是錯誤
+  if ((m.location()?.url || '').includes('api.github.com')) return;
+  errors.push(m.text());
+});
 await page.route('**/v1/messages**', (route) => route.fulfill({
   status: 200, headers: { 'content-type': 'text/event-stream' }, body: SSE('晚安，我在。'),
 }));
@@ -178,6 +183,52 @@ try {
     caches: await caches.keys(),
   }));
   check('Service Worker 已註冊', sw.reg, sw.caches.join(', '));
+
+  console.log('\n[7] 跨裝置同步');
+  let ghStore = null;
+  let ghPuts = 0;
+  await page.route('**/api.github.com/**', (route) => {
+    const send = (status, body) => route.fulfill({
+      status, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    if (route.request().method() === 'GET') return ghStore ? send(200, ghStore) : send(404, { message: 'Not Found' });
+    ghPuts += 1;
+    const body = JSON.parse(route.request().postData());
+    if (ghStore && body.sha !== ghStore.sha) return send(409, { message: 'conflict' });
+    ghStore = { content: body.content, sha: `sha${ghPuts}` };
+    return send(200, {});
+  });
+  await page.evaluate(async () => {
+    const s = await import('./js/store.js');
+    s.settings.patch({ memory: '住在台北', syncRepo: 'me/jarvis-data', syncToken: 'ghp_TEST', syncEnabled: true });
+    const { randomPassphrase } = await import('./js/crypto.js');
+    s.settings.patch({ syncPass: randomPassphrase() });
+  });
+  const link = await page.evaluate(async () => {
+    await (await import('./js/sync.js')).syncNow();
+    return (await import('./js/sync.js')).makeLinkCode();
+  });
+  const raw = Buffer.from(ghStore.content, 'base64').toString('utf8');
+  check('上傳的是密文，看不到明文記憶', !raw.includes('住在台北'), Object.keys(JSON.parse(raw)).join(','));
+
+  // 換一台「新裝置」：清空本機資料，只用連結碼接回來
+  await page.evaluate(() => localStorage.clear());
+  await page.reload({ waitUntil: 'networkidle' });
+  const restored = await page.evaluate(async (code) => {
+    const s = await import('./js/store.js');
+    const sync = await import('./js/sync.js');
+    s.settings.patch({ ...sync.parseLinkCode(code), syncEnabled: true });
+    await sync.syncNow();
+    return { memory: s.settings.get('memory'), face: s.face.exists() };
+  }, link);
+  check('新裝置用連結碼還原記憶與臉部檔案', restored.memory === '住在台北' && restored.face,
+    `memory=${restored.memory} face=${restored.face}`);
+  const wrongPass = await page.evaluate(async () => {
+    const s = await import('./js/store.js');
+    s.settings.patch({ syncPass: 'WRONG-PASS' });
+    try { await (await import('./js/sync.js')).syncNow(); return ''; } catch (e) { return e.message; }
+  });
+  check('密語不對會擋下來', wrongPass.includes('密語'), wrongPass);
 
   console.log(`\n主控台錯誤：${errors.length ? `\n  ${errors.join('\n  ')}` : '無'}`);
   if (errors.length) fail += 1;
