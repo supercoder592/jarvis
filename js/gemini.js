@@ -58,13 +58,20 @@ export async function ask({ client, settings, history, onDelta, signal }) {
   return readStream(res, onDelta, signal);
 }
 
-function send(client, model, body, signal) {
-  return fetch(`${BASE}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-goog-api-key': client.key },
-    body: JSON.stringify(body),
-    signal,
-  });
+const IDLE_TIMEOUT_MS = 45000;
+
+async function send(client, model, body, signal) {
+  try {
+    return await fetch(`${BASE}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': client.key },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err;
+    throw new Error(`連不上 Gemini（${err?.message || err}）。檢查網路，或稍後再試。`);
+  }
 }
 
 const BLOCK_REASONS = {
@@ -73,56 +80,95 @@ const BLOCK_REASONS = {
   PROHIBITED_CONTENT: '這個請求被 Gemini 判定為不允許的內容。',
 };
 
+// Google 的 SSE 用 \r\n\r\n 分隔事件，不是只有 \n\n。
+// 只認 \n\n 的話資料永遠湊不成一個事件，請求會一直卡住直到連線斷掉。
+const DELIMITERS = ['\r\n\r\n', '\n\n', '\r\r'];
+
+/** 串流中途收到的 API 錯誤，要原樣往外丟，不要被當成連線中斷 */
+class StreamError extends Error {}
+
+function findDelimiter(buffer) {
+  let at = -1;
+  let len = 0;
+  for (const d of DELIMITERS) {
+    const i = buffer.indexOf(d);
+    if (i !== -1 && (at === -1 || i < at)) { at = i; len = d.length; }
+  }
+  return at === -1 ? null : { at, len };
+}
+
 async function readStream(res, onDelta, signal) {
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error('Gemini 沒有回傳內容。');
+  const decoder = new TextDecoder('utf-8');
+  const state = { text: '', blocked: null };
   let buffer = '';
-  let text = '';
-  let blocked = null;
+
+  // 閒置太久就收手，避免整個介面卡住不動
+  let idle;
+  const resetIdle = () => {
+    clearTimeout(idle);
+    idle = setTimeout(() => reader.cancel().catch(() => {}), IDLE_TIMEOUT_MS);
+  };
 
   try {
+    resetIdle();
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
+      resetIdle();
       buffer += decoder.decode(value, { stream: true });
 
-      // SSE：以空行分隔事件，每行 data: {...}
-      let idx;
-      while ((idx = buffer.indexOf('\n\n')) !== -1) {
-        const block = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 2);
-        for (const line of block.split('\n')) {
-          if (!line.startsWith('data:')) continue;
-          const payload = line.slice(5).trim();
-          if (!payload || payload === '[DONE]') continue;
-          let json;
-          try { json = JSON.parse(payload); } catch { continue; }
-
-          if (json.promptFeedback?.blockReason) {
-            blocked = BLOCK_REASONS[json.promptFeedback.blockReason]
-              || `請求被擋下（${json.promptFeedback.blockReason}）。`;
-          }
-          const cand = json.candidates?.[0];
-          for (const part of cand?.content?.parts || []) {
-            if (part.thought || typeof part.text !== 'string') continue;
-            text += part.text;
-            onDelta?.(part.text, text);
-          }
-          const finish = cand?.finishReason;
-          if (finish && finish !== 'STOP') {
-            if (finish === 'MAX_TOKENS') text += '…（回覆太長被截斷了）';
-            else blocked = BLOCK_REASONS[finish] || `回覆提前結束（${finish}）。`;
-          }
-        }
+      let hit;
+      while ((hit = findDelimiter(buffer))) {
+        const block = buffer.slice(0, hit.at);
+        buffer = buffer.slice(hit.at + hit.len);
+        handleBlock(block, state, onDelta);
       }
     }
+    if (buffer.trim()) handleBlock(buffer, state, onDelta); // 最後一段沒有結尾分隔符
   } catch (err) {
-    if (err?.name === 'AbortError' || signal?.aborted) return text;
-    throw new Error('連線中斷，請再試一次。');
+    if (err?.name === 'AbortError' || signal?.aborted) return state.text;
+    if (err instanceof StreamError) throw err;
+    if (state.text) return state.text; // 已經收到一部分就先給使用者
+    throw new Error(`回覆傳到一半中斷了（${err?.message || err}）。`);
+  } finally {
+    clearTimeout(idle);
   }
 
-  if (!text.trim() && blocked) throw new Error(blocked);
-  return text;
+  if (!state.text.trim() && state.blocked) throw new Error(state.blocked);
+  return state.text;
+}
+
+function handleBlock(block, state, onDelta) {
+  for (const line of block.split(/\r\n|\n|\r/)) {
+    if (!line.startsWith('data:')) continue;
+    const payload = line.slice(5).trim();
+    if (!payload || payload === '[DONE]') continue;
+    let json;
+    try { json = JSON.parse(payload); } catch { continue; }
+
+    // 錯誤也可能包在串流中間送過來
+    if (json.error) {
+      throw new StreamError(json.error.message
+        || `Gemini 回報錯誤（${json.error.status || json.error.code}）。`);
+    }
+    if (json.promptFeedback?.blockReason) {
+      state.blocked = BLOCK_REASONS[json.promptFeedback.blockReason]
+        || `請求被擋下（${json.promptFeedback.blockReason}）。`;
+    }
+    const cand = json.candidates?.[0];
+    for (const part of cand?.content?.parts || []) {
+      if (part.thought || typeof part.text !== 'string') continue;
+      state.text += part.text;
+      onDelta?.(part.text, state.text);
+    }
+    const finish = cand?.finishReason;
+    if (finish && finish !== 'STOP') {
+      if (finish === 'MAX_TOKENS') state.text += '…（回覆太長被截斷了）';
+      else state.blocked = BLOCK_REASONS[finish] || `回覆提前結束（${finish}）。`;
+    }
+  }
 }
 
 async function friendly(res) {

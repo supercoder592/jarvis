@@ -130,7 +130,8 @@ try {
     }
     geminiBody = JSON.parse(route.request().postData() || '{}');
     return route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' },
-      body: 'data: {"candidates":[{"content":{"parts":[{"thought":true,"text":"(思考)"},{"text":"我在。"}],"role":"model"},"finishReason":"STOP"}]}\n\n' });
+      // 用 \r\n\r\n：Google 實際送的就是這個，只認 \n\n 會解析不出來
+      body: 'data: {"candidates":[{"content":{"parts":[{"thought":true,"text":"(思考)"},{"text":"我在。"}],"role":"model"},"finishReason":"STOP"}]}\r\n\r\n' });
   });
   await page.click('#btn-settings');
   await page.waitForSelector('#sheet:not([hidden])');

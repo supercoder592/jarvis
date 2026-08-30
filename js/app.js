@@ -5,7 +5,7 @@ import * as voice from './voice.js';
 import * as hud from './hud.js';
 import * as ai from './ai.js';
 
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.5.1';
 const AUTO_LOCK_MS = 5 * 60 * 1000; // 離開 App 超過 5 分鐘就重新上鎖
 
 const $ = (id) => document.getElementById(id);
