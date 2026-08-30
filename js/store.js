@@ -29,7 +29,7 @@ const DEFAULTS = {
   // 跨裝置同步（GitHub 上一個加密的 JSON 檔）
   syncEnabled: false,
   syncRepo: '',            // owner/repo，建議用 private repo
-  syncPath: 'jarvis-sync.json',
+  syncPath: 'data.json',      // 中性檔名；舊使用者已設定的路徑不受影響
   syncToken: '',           // fine-grained PAT，只給這個 repo 的 Contents 讀寫
   syncPass: '',            // 端對端加密密語，不會離開裝置
   syncFace: true,

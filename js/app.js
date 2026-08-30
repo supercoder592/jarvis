@@ -748,7 +748,7 @@ function saveFromSheet() {
     liveness: el['set-liveness'].checked,
     syncEnabled: el['set-sync-enabled'].checked,
     syncRepo: el['set-sync-repo'].value.trim(),
-    syncPath: el['set-sync-path'].value.trim() || 'jarvis-sync.json',
+    syncPath: el['set-sync-path'].value.trim() || 'data.json',
     syncToken: el['set-sync-token'].value.trim(),
     syncPass: el['set-sync-pass'].value.trim(),
     syncFace: el['set-sync-face'].checked,

@@ -26,36 +26,59 @@ async function deriveKey(passphrase, salt) {
   );
 }
 
-/** 回傳可直接存成 JSON 的密文信封 */
+// 密文長度會洩漏內容多寡（記了幾件事、有沒有存金鑰、今天多記了什麼），
+// 所以加密前先用隨機資料把明文補滿到 BLOCK 的整數倍，讓檔案大小只剩幾個級距。
+const BLOCK = 8192;
+
+const PAD_FIELD = ',"_":""'.length; // 填充欄位本身佔的位元組
+
+// 一定要用 UTF-8 位元組數算，不能用字串長度：
+// 中文一個字是 3 個位元組，用字元數補的話，檔案大小仍會隨中文多寡變動。
+function padTo(body) {
+  const bodyBytes = enc.encode(body).length;
+  const target = Math.max(BLOCK, Math.ceil((bodyBytes + PAD_FIELD + 32) / BLOCK) * BLOCK);
+  const need = Math.max(0, target - bodyBytes - PAD_FIELD);
+  const bytes = crypto.getRandomValues(new Uint8Array(Math.ceil(need * 0.75) + 3));
+  return toB64(bytes).slice(0, need); // base64 是 ASCII，一個字元剛好一個位元組
+}
+
+/**
+ * 回傳可直接存成 JSON 的密文信封。
+ * 欄位名刻意取得中性、也不寫演算法名稱——不是為了增加破解難度
+ * （密文本來就跟亂數無異），而是不要主動告訴撿到檔案的人這是什麼。
+ */
 export async function encryptJson(passphrase, value) {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveKey(passphrase, salt);
+
+  const body = JSON.stringify(value);
+  const padded = `${body.slice(0, -1)},"_":"${padTo(body)}"}`;
   const cipher = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(value)),
+    { name: 'AES-GCM', iv }, key, enc.encode(padded),
   );
-  return {
-    v: 1,
-    alg: 'PBKDF2-SHA256/AES-256-GCM',
-    rounds: PBKDF2_ROUNDS,
-    salt: toB64(salt),
-    iv: toB64(iv),
-    data: toB64(new Uint8Array(cipher)),
-  };
+  return { v: 2, s: toB64(salt), i: toB64(iv), d: toB64(new Uint8Array(cipher)) };
 }
 
 export async function decryptJson(passphrase, envelope) {
-  if (!envelope?.data) throw new Error('同步檔案格式不對。');
-  const salt = fromB64(envelope.salt);
-  const iv = fromB64(envelope.iv);
-  const key = await deriveKey(passphrase, salt);
+  // v1 用的是 salt/iv/data，v2 改成短欄位名且加了填充
+  const saltB64 = envelope?.s ?? envelope?.salt;
+  const ivB64 = envelope?.i ?? envelope?.iv;
+  const dataB64 = envelope?.d ?? envelope?.data;
+  if (!dataB64 || !saltB64 || !ivB64) throw new Error('同步檔案格式不對。');
+
+  const key = await deriveKey(passphrase, fromB64(saltB64));
   let plain;
   try {
-    plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, fromB64(envelope.data));
+    plain = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: fromB64(ivB64) }, key, fromB64(dataB64),
+    );
   } catch {
     throw new Error('同步密語不對，解不開雲端上的資料。');
   }
-  return JSON.parse(dec.decode(plain));
+  const value = JSON.parse(dec.decode(plain));
+  delete value._; // 填充用的隨機資料，用完就丟
+  return value;
 }
 
 export function toB64(bytes) {

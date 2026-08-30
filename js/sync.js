@@ -38,7 +38,7 @@ export function parseLinkCode(code) {
   if (!payload.r || !payload.t || !payload.k) throw new Error('連結碼缺少必要資訊。');
   return {
     syncRepo: payload.r,
-    syncPath: payload.p || 'jarvis-sync.json',
+    syncPath: payload.p || 'data.json',
     syncToken: payload.t,
     syncPass: payload.k,
   };
@@ -85,7 +85,8 @@ async function writeRemote(s, envelope, sha) {
     method: 'PUT',
     headers: { ...ghHeaders(s.syncToken), 'content-type': 'application/json' },
     body: JSON.stringify({
-      message: `JARVIS 同步 ${new Date().toISOString()}`,
+      // 固定訊息：commit 歷史是公開的元資料，不必在裡面寫這是什麼 App
+      message: 'update',
       content: utf8ToB64(JSON.stringify(envelope, null, 2)),
       ...(sha ? { sha } : {}),
     }),
