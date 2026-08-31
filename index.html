@@ -94,7 +94,7 @@
       <input type="file" id="pair-file" accept=".json,application/json" hidden>
       <p class="muted small">
         沒設定過雲端也沒關係：在舊裝置按「匯出備份檔」，用 AirDrop 傳過來，
-        再從這裡選那個檔案就好。連 API 金鑰都會一起過來。
+        再從這裡選那個檔案就好。
       </p>
       <p class="hint" id="pair-status"></p>
     </div>
@@ -245,11 +245,18 @@
       存放位置 App 自己知道（就是這個網站所在的 repo，放在獨立分支，不干擾網站）。
       只有寫入需要授權，所以要一把 token：GitHub → Settings → Developer settings →
       Fine-grained tokens，只選這個 repo，權限給 <b>Contents: Read and write</b>。<br>
-      同步檔裡有記憶、個性、臉部檔案與備用密碼的雜湊，<b>但沒有 API 金鑰</b>——
-      那個放進公開檔案會被爬蟲撿走，所以每台裝置各自填。
+      同步檔裡有記憶、個性、臉部檔案與備用密碼的雜湊。<b>GitHub token 永遠不會同步</b>，
+      因為它能寫入你的 repo。API 金鑰要不要一起帶，用下面的開關決定。
     </p>
     <label class="row inline"><span>連臉部檔案也同步</span>
       <input type="checkbox" id="set-sync-face"></label>
+    <label class="row inline"><span>連 API 金鑰也同步</span>
+      <input type="checkbox" id="set-sync-keys"></label>
+    <p class="muted small">
+      開著的話新裝置接手就能直接用，不用再填金鑰。代價是金鑰跟著進了公開的同步檔——
+      最壞情況是免費額度被別人用掉，重新產生一把就好。<b>有綁付款方式的金鑰不要開這個。</b>
+      GitHub token 無論如何都不會同步。
+    </p>
 
     <details class="adv">
       <summary>手動設定（平常不用碰）</summary>

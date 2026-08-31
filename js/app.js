@@ -8,7 +8,7 @@ import * as memory from './memory.js';
 import * as sync from './sync.js';
 import { randomPassphrase } from './crypto.js';
 
-const APP_VERSION = '2.4.1';
+const APP_VERSION = '2.5.0';
 const AUTO_LOCK_MS = 5 * 60 * 1000; // 離開 App 超過 5 分鐘就重新上鎖
 
 const $ = (id) => document.getElementById(id);
@@ -24,7 +24,7 @@ const el = {};
   'set-provider', 'set-key', 'set-workspace', 'set-gemini-key', 'set-proxy', 'set-model', 'set-effort',
   'rows-claude', 'rows-gemini', 'row-load-models', 'btn-load-models', 'set-auto-memory', 'set-tts', 'set-handsfree', 'set-voice',
   'set-sync-enabled', 'set-sync-repo', 'set-sync-branch', 'set-sync-path', 'set-sync-token', 'set-sync-pass',
-  'set-sync-face', 'btn-sync-gen', 'btn-sync-now', 'btn-sync-copy', 'btn-sync-paste', 'sync-status',
+  'set-sync-face', 'set-sync-keys', 'btn-sync-gen', 'btn-sync-now', 'btn-sync-copy', 'btn-sync-paste', 'sync-status',
   'pair-box', 'btn-pair-face', 'pair-scan', 'pair-cam', 'pair-hint', 'pair-status',
   'btn-pair-file', 'pair-file', 'btn-export',
   'set-rate', 'rate-val', 'set-threshold', 'thr-val', 'set-liveness',
@@ -170,7 +170,7 @@ function applyMemory(reply) {
   const result = memory.merge(settings.get('memory'), { adds, removes });
   if (result.added.length || result.removed.length) {
     settings.patch({ memory: result.memory });
-    sync.schedule(); // 新記到的事推到其他裝置
+    sync.schedule(1500); // 記到新東西就馬上推上去，只留一點時間合併同一則回覆裡的多筆
     const notes = [
       ...result.added.map((t) => `已記住：${t}`),
       ...result.removed.map((t) => `已忘記：${t}`),
@@ -507,7 +507,7 @@ const SHEET_FIELDS = [
   'set-tts', 'set-handsfree', 'set-voice',
   'set-rate', 'set-threshold', 'set-liveness',
   'set-sync-enabled', 'set-sync-repo', 'set-sync-branch', 'set-sync-path', 'set-sync-token',
-  'set-sync-pass', 'set-sync-face',
+  'set-sync-pass', 'set-sync-face', 'set-sync-keys',
 ];
 
 // ── 跨裝置同步 ───────────────────────────────────────────
@@ -816,6 +816,7 @@ function openSheet() {
   el['set-sync-token'].value = s.syncToken;
   el['set-sync-pass'].value = s.syncPass;
   el['set-sync-face'].checked = s.syncFace !== false;
+  el['set-sync-keys'].checked = s.syncKeys !== false;
   renderSyncStatus();
   el['sheet-version'].textContent = `版本 ${APP_VERSION} · 資料僅存於本機`;
   fillVoiceList();
@@ -855,6 +856,7 @@ function saveFromSheet() {
     syncToken: el['set-sync-token'].value.trim(),
     syncPass: el['set-sync-pass'].value.trim(),
     syncFace: el['set-sync-face'].checked,
+    syncKeys: el['set-sync-keys'].checked,
   });
   app.client = null; // 連線設定可能變了，下次重建
   el['rate-val'].textContent = `${(+el['set-rate'].value).toFixed(2)}x`;

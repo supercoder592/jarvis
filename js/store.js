@@ -34,6 +34,7 @@ const DEFAULTS = {
   syncToken: '',           // fine-grained PAT，只給這個 repo 的 Contents 讀寫
   syncPass: '',            // 端對端加密密語，不會離開裝置
   syncFace: true,
+  syncKeys: true,          // 連 API 金鑰也同步（GitHub token 永遠不同步）
   syncLastAt: 0,
   updatedAt: 0,             // 這台裝置最後一次改設定的時間，同步比對新舊用
   schema: 2,

@@ -10,18 +10,26 @@ import { encryptJson, decryptJson, utf8ToB64, b64ToUtf8 } from './crypto.js';
 const API = 'https://api.github.com';
 
 /**
- * 會跟著同步的設定。
- *
- * 刻意不含兩類東西：
- *  1. 裝置相關的偏好（語音、語速、辨識嚴格度——跟該台裝置的硬體與環境有關）
- *  2. 任何憑證（API 金鑰、GitHub token）。同步檔放在公開 repo 且沒有密語保護，
- *     憑證放進去等於公開發布，爬蟲幾小時內就會撿走拿去用。
- *     金鑰請在每台裝置各自填一次，或用「進階」的連結碼帶過去。
+ * 會跟著同步的設定。刻意不含裝置相關的偏好
+ *（語音、語速、辨識嚴格度都跟該台裝置的硬體與環境有關）。
+ * GitHub token 一律不同步——它能寫入 repo，外流的後果跟 API 金鑰不同級。
  */
-export const SYNCED_KEYS = [
+const BASE_KEYS = [
   'ownerName', 'assistantName', 'persona', 'memory', 'autoMemory',
   'provider', 'model', 'geminiModel', 'effort',
 ];
+
+/**
+ * 憑證類。預設會跟著同步，但這是使用者自己決定的取捨：
+ * 同步檔放在公開 repo，金鑰等於公開——最壞情況是額度被別人用掉，
+ * 重新產生一把即可。用的是沒有綁付款方式的免費額度才適合這樣。
+ * 不想這樣就到設定關掉「連 API 金鑰也同步」。
+ */
+const CREDENTIAL_KEYS = ['apiKey', 'geminiKey', 'workspaceId', 'proxyUrl'];
+
+export function syncedKeys(s = settings.all()) {
+  return s.syncKeys === false ? BASE_KEYS : [...BASE_KEYS, ...CREDENTIAL_KEYS];
+}
 
 /**
  * 沒設自訂密語時的封裝金鑰，由 repo 名稱推導。
@@ -195,7 +203,7 @@ async function writeRemote(s, envelope, sha) {
 function snapshot() {
   const s = settings.all();
   const data = { v: 1, updatedAt: s.updatedAt || 0, settings: {} };
-  for (const k of SYNCED_KEYS) data.settings[k] = s[k];
+  for (const k of syncedKeys(s)) data.settings[k] = s[k];
   if (s.syncFace !== false) {
     const f = faceStore.load();
     if (f) data.face = { enrolledAt: f.enrolledAt, samples: f.samples.map((d) => Array.from(d)) };
@@ -224,7 +232,7 @@ export function merge(local, remote) {
     ? [local.settings || {}, remote.settings || {}]
     : [remote.settings || {}, local.settings || {}];
   const base = {};
-  for (const k of SYNCED_KEYS) {
+  for (const k of syncedKeys()) {
     base[k] = isBlank(newer[k]) && !isBlank(older[k]) ? older[k] : newer[k];
   }
 
@@ -248,7 +256,7 @@ export function merge(local, remote) {
 
 function applyLocally(data) {
   const patch = {};
-  for (const k of SYNCED_KEYS) if (data.settings[k] !== undefined) patch[k] = data.settings[k];
+  for (const k of syncedKeys()) if (data.settings[k] !== undefined) patch[k] = data.settings[k];
   // touch:false —— 這是同步寫回來的，不算「這台裝置改了設定」
   settings.patch({ ...patch, updatedAt: data.updatedAt || 0 }, { touch: false });
   if (data.face?.samples?.length && settings.get('syncFace') !== false) {
@@ -292,7 +300,8 @@ export function adoptCloud({ data, target, pass }) {
 // 跟雲端同步最大的差別：這個檔案是你自己 AirDrop 給自己的，
 // 不會經過任何公開場所，所以「API 金鑰」可以一起帶過去。
 
-const BACKUP_KEYS = [...SYNCED_KEYS, 'apiKey', 'geminiKey', 'workspaceId', 'proxyUrl'];
+// 備份檔是自己傳給自己的，一律帶完整內容
+const BACKUP_KEYS = [...BASE_KEYS, ...CREDENTIAL_KEYS];
 
 /** 產生一份完整備份（含金鑰），交給分享面板或下載 */
 export async function makeBackup() {
