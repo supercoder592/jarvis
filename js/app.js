@@ -8,7 +8,7 @@ import * as memory from './memory.js';
 import * as sync from './sync.js';
 import { randomPassphrase } from './crypto.js';
 
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.3.1';
 const AUTO_LOCK_MS = 5 * 60 * 1000; // 離開 App 超過 5 分鐘就重新上鎖
 
 const $ = (id) => document.getElementById(id);
@@ -514,7 +514,10 @@ function renderSyncStatus(extra) {
   const s = settings.all();
   if (extra) { el['sync-status'].textContent = extra; return; }
   if (!s.syncEnabled) { el['sync-status'].textContent = '同步關閉中'; return; }
-  if (!sync.isConfigured(s)) { el['sync-status'].textContent = '還缺 repo、Token 或密語'; return; }
+  if (!sync.isConfigured(s)) {
+    el['sync-status'].textContent = '還沒填 GitHub Token（不填也沒關係，只是資料不會上傳）';
+    return;
+  }
   el['sync-status'].textContent = s.syncLastAt
     ? `上次同步：${new Date(s.syncLastAt).toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short' })}`
     : '已設定，還沒同步過';
