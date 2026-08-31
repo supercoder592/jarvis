@@ -78,8 +78,7 @@
     <div class="pair-box" id="pair-box">
       <h3>已經在別台裝置用過？</h3>
       <p class="muted small">
-        掃一下臉就好。記憶、個性、臉部檔案與備用密碼會直接接手，下面的步驟都可以跳過。
-        （API 金鑰要在這台裝置自己填一次，那個不會跟著跑。）
+        兩種接手方式，下面的步驟都可以跳過。
       </p>
       <div class="pair-scan" id="pair-scan" hidden>
         <div class="reactor small">
@@ -90,7 +89,13 @@
           <p class="muted small" id="pair-hint">正對鏡頭…</p>
         </div>
       </div>
-      <button class="btn primary wide" id="btn-pair-face">掃臉接手</button>
+      <button class="btn primary wide" id="btn-pair-face">掃臉接手（從雲端）</button>
+      <button class="btn ghost wide" id="btn-pair-file">從備份檔接手</button>
+      <input type="file" id="pair-file" accept=".json,application/json" hidden>
+      <p class="muted small">
+        沒設定過雲端也沒關係：在舊裝置按「匯出備份檔」，用 AirDrop 傳過來，
+        再從這裡選那個檔案就好。連 API 金鑰都會一起過來。
+      </p>
       <p class="hint" id="pair-status"></p>
     </div>
 
@@ -271,7 +276,12 @@
 
     <div class="row btn-row">
       <button class="btn ghost" id="btn-sync-now">立即同步</button>
+      <button class="btn ghost" id="btn-export">匯出備份檔</button>
     </div>
+    <p class="muted small">
+      不想用 GitHub 也可以：「匯出備份檔」會產生一個加密檔，AirDrop 給新裝置，
+      在那邊選「從備份檔接手」就好，完全不需要 token。
+    </p>
     <p class="muted small" id="sync-status">尚未同步</p>
 
     <h3 class="sheet-sub">語音</h3>

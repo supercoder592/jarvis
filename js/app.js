@@ -8,7 +8,7 @@ import * as memory from './memory.js';
 import * as sync from './sync.js';
 import { randomPassphrase } from './crypto.js';
 
-const APP_VERSION = '2.3.1';
+const APP_VERSION = '2.4.0';
 const AUTO_LOCK_MS = 5 * 60 * 1000; // 離開 App 超過 5 分鐘就重新上鎖
 
 const $ = (id) => document.getElementById(id);
@@ -26,6 +26,7 @@ const el = {};
   'set-sync-enabled', 'set-sync-repo', 'set-sync-branch', 'set-sync-path', 'set-sync-token', 'set-sync-pass',
   'set-sync-face', 'btn-sync-gen', 'btn-sync-now', 'btn-sync-copy', 'btn-sync-paste', 'sync-status',
   'pair-box', 'btn-pair-face', 'pair-scan', 'pair-cam', 'pair-hint', 'pair-status',
+  'btn-pair-file', 'pair-file', 'btn-export',
   'set-rate', 'rate-val', 'set-threshold', 'thr-val', 'set-liveness',
   'btn-reenroll', 'btn-repin', 'btn-clear-chat', 'btn-wipe', 'sheet-version', 'toast',
   'btn-face-test', 'btn-face-test-stop', 'face-test', 'face-test-tip', 'test-cam',
@@ -598,6 +599,46 @@ async function handoverByFace() {
   }
 }
 
+/** 匯出備份檔：優先用 iOS 的分享面板（可以直接 AirDrop），不行才退回下載 */
+async function exportBackup() {
+  saveFromSheet();
+  try {
+    const { filename, blob } = await sync.makeBackup();
+    const file = new File([blob], filename, { type: 'application/json' });
+
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], title: 'JARVIS 備份' });
+      toast('選 AirDrop 傳到另一台裝置就好');
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    toast('備份檔已下載');
+  } catch (err) {
+    if (err?.name === 'AbortError') return; // 使用者自己取消分享
+    toast(err.message || '匯出失敗');
+  }
+}
+
+/** 從備份檔接手：檔案在你手上就是身分證明，不再另外驗一次臉 */
+async function importBackup(file) {
+  if (!file) return;
+  hint(el['pair-status'], '讀取備份檔…');
+  try {
+    await sync.restoreBackup(await file.text());
+    toast('接手完成，這台裝置已經認得你了');
+    unlock();
+  } catch (err) {
+    hint(el['pair-status'], err.message, true);
+  } finally {
+    el['pair-file'].value = ''; // 讓同一個檔案可以再選一次
+  }
+}
+
 async function copyLinkCode() {
   saveFromSheet();
   if (!sync.isConfigured()) { toast('請先填好 repo、Token 與密語'); return; }
@@ -910,6 +951,9 @@ function wire() {
   });
 
   el['btn-pair-face'].addEventListener('click', handoverByFace);
+  el['btn-pair-file'].addEventListener('click', () => el['pair-file'].click());
+  el['pair-file'].addEventListener('change', (e) => importBackup(e.target.files?.[0]));
+  el['btn-export'].addEventListener('click', exportBackup);
   el['btn-sync-copy'].addEventListener('click', copyLinkCode);
   el['btn-sync-paste'].addEventListener('click', pasteLinkCode);
 

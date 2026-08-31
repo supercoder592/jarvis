@@ -282,6 +282,53 @@ export function adoptCloud({ data, target, pass }) {
   settings.patch({ syncLastAt: Date.now() }, { touch: false });
 }
 
+// ── 檔案搬家：不需要 GitHub、不需要任何帳號 ──────────────
+//
+// 跟雲端同步最大的差別：這個檔案是你自己 AirDrop 給自己的，
+// 不會經過任何公開場所，所以「API 金鑰」可以一起帶過去。
+
+const BACKUP_KEYS = [...SYNCED_KEYS, 'apiKey', 'geminiKey', 'workspaceId', 'proxyUrl'];
+
+/** 產生一份完整備份（含金鑰），交給分享面板或下載 */
+export async function makeBackup() {
+  const s = settings.all();
+  const data = { v: 1, updatedAt: Date.now(), settings: {} };
+  for (const k of BACKUP_KEYS) data.settings[k] = s[k];
+
+  const f = faceStore.load();
+  if (f) data.face = { enrolledAt: f.enrolledAt, samples: f.samples.map((d) => Array.from(d)) };
+  const p = pinStore.raw();
+  if (p) data.pin = p;
+
+  const envelope = await encryptJson(effectivePass(s), data);
+  const stamp = new Date().toISOString().slice(0, 10);
+  return {
+    filename: `jarvis-${stamp}.json`,
+    blob: new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' }),
+  };
+}
+
+/** 讀回備份檔並套用。檔案在你手上就是最好的身分證明，不再另外驗一次 */
+export async function restoreBackup(text) {
+  let envelope;
+  try {
+    envelope = JSON.parse(text);
+  } catch {
+    throw new Error('這不是 JARVIS 的備份檔。');
+  }
+  const s = settings.all();
+  const data = await decryptJson(effectivePass(s), envelope);
+
+  const patch = {};
+  for (const k of BACKUP_KEYS) if (data.settings?.[k] !== undefined) patch[k] = data.settings[k];
+  settings.patch(patch);
+  if (data.face?.samples?.length) {
+    faceStore.save(data.face.samples.map((a) => Float32Array.from(a)));
+  }
+  if (data.pin) pinStore.restore(data.pin);
+  return data;
+}
+
 /** 一步到位版本，設定面板的「進階」用得到 */
 export async function restoreWithPassphrase(passphrase) {
   const got = await fetchCloud(passphrase);
