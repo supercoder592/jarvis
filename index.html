@@ -245,17 +245,20 @@
       存放位置 App 自己知道（就是這個網站所在的 repo，放在獨立分支，不干擾網站）。
       只有寫入需要授權，所以要一把 token：GitHub → Settings → Developer settings →
       Fine-grained tokens，只選這個 repo，權限給 <b>Contents: Read and write</b>。<br>
-      同步檔裡有記憶、個性、臉部檔案與備用密碼的雜湊。<b>GitHub token 永遠不會同步</b>，
-      因為它能寫入你的 repo。API 金鑰要不要一起帶，用下面的開關決定。
+      同步檔裡有記憶、個性、臉部檔案與備用密碼的雜湊。
+      要讓每台裝置都能寫回去（而不只是讀），Token 也得跟著同步——
+      所以<b>請把資料放在一個獨立的 repo</b>，Token 只給那一個 repo 的權限。
+      這樣就算外流，別人也只能弄壞那份資料，碰不到這個 App。
     </p>
     <label class="row inline"><span>連臉部檔案也同步</span>
       <input type="checkbox" id="set-sync-face"></label>
-    <label class="row inline"><span>連 API 金鑰也同步</span>
+    <label class="row inline"><span>連金鑰與 Token 也同步</span>
       <input type="checkbox" id="set-sync-keys"></label>
     <p class="muted small">
-      開著的話新裝置接手就能直接用，不用再填金鑰。代價是金鑰跟著進了公開的同步檔——
-      最壞情況是免費額度被別人用掉，重新產生一把就好。<b>有綁付款方式的金鑰不要開這個。</b>
-      GitHub token 無論如何都不會同步。
+      開著＝每台裝置都能讀也能寫，這才是真正的雙向同步，新裝置接手完直接就能用。
+      代價是憑證跟著進了公開的同步檔，所以務必搭配「獨立的資料 repo」。<br>
+      關掉＝憑證留在本機，新裝置只讀得到雲端資料，要寫回去得自己貼一次 Token。
+      <b>金鑰若綁了付款方式，請關掉。</b>
     </p>
 
     <details class="adv">

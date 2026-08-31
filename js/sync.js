@@ -20,12 +20,18 @@ const BASE_KEYS = [
 ];
 
 /**
- * 憑證類。預設會跟著同步，但這是使用者自己決定的取捨：
- * 同步檔放在公開 repo，金鑰等於公開——最壞情況是額度被別人用掉，
- * 重新產生一把即可。用的是沒有綁付款方式的免費額度才適合這樣。
- * 不想這樣就到設定關掉「連 API 金鑰也同步」。
+ * 憑證類，預設跟著同步。
+ *
+ * syncToken 一定要在裡面，否則新裝置只讀得到、寫不回去——
+ * 那樣 B 裝置記到的事永遠回不到 A 裝置，不算真的同步。
+ *
+ * 代價要知道：同步檔沒有自訂密語時等於公開，token 也就等於公開。
+ * 所以**同步檔應該放在一個獨立的 repo**，token 只給那一個 repo 的 Contents 權限。
+ * 這樣就算外流，別人也只能弄壞那份資料（重建即可），碰不到 App 本身。
+ * 不想讓憑證離開這台裝置就到設定關掉「連 API 金鑰也同步」，
+ * 那時新裝置就只能讀，要寫得自己貼一次 token。
  */
-const CREDENTIAL_KEYS = ['apiKey', 'geminiKey', 'workspaceId', 'proxyUrl'];
+const CREDENTIAL_KEYS = ['apiKey', 'geminiKey', 'workspaceId', 'proxyUrl', 'syncToken'];
 
 export function syncedKeys(s = settings.all()) {
   return s.syncKeys === false ? BASE_KEYS : [...BASE_KEYS, ...CREDENTIAL_KEYS];
