@@ -95,7 +95,12 @@ async function ghError(res) {
   let msg = '';
   try { msg = (await res.json())?.message || ''; } catch { /* 忽略 */ }
   if (res.status === 401) return new Error('GitHub Token 無效或已過期，請重新產生一把。');
-  if (res.status === 403) return new Error(`GitHub 拒絕存取：${msg || '請確認 Token 有這個 repo 的 Contents 讀寫權限'}。`);
+  if (res.status === 403) {
+    // 幾乎都是同一個原因：fine-grained token 忘了把 Contents 改成 Read and write
+    return new Error('Token 權限不足。到 GitHub 重新產生一把，'
+      + 'Permissions → Repository permissions → Contents 要設成 Read and write，'
+      + '而且 Repository access 要選到 jarvis 這個 repo。');
+  }
   if (res.status === 404) return new Error('找不到這個 repo 或路徑，請確認 owner/repo 拼法與 Token 權限。');
   if (res.status === 409) return new Error('雲端上的檔案剛剛被別台裝置改過，請再同步一次。');
   if (res.status === 422) return new Error(`GitHub 不接受這次寫入：${msg}`);
